@@ -1,0 +1,19 @@
+[submodule "common/libpupnp"]
+	path = common/libpupnp
+	url = https://github.com/philippe44/libpupnp
+[submodule "common/libcodecs"]
+	path = common/libcodecs
+	url = https://github.com/philippe44/libcodecs
+[submodule "common/crosstools"]
+	path = common/crosstools
+	url = https://github.com/philippe44/crosstools
+[submodule "common/libpthreads4w"]
+	path = common/libpthreads4w
+	url = https://github.com/philippe44/libpthreads4w
+[submodule "common/cspot"]
+	path = common/cspot
+	url = http://www.github.com/philippe44/cspot
+	branch = feat/cdn
+[submodule "common/libmbedtls"]
+	path = common/libmbedtls
+	url = https://github.com/philippe44/libmbedtls
