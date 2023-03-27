@@ -1,5 +1,5 @@
-# SpotConnect: UPnP devices made Spotify Connect compatible
-Use these applications to add Spotify Connect capabilities to UPnP (like Sonos) players
+# SpotConnect: Enable Spotify Connect for UPnP devices 
+Use thise application to add Spotify Connect capabilities to UPnP (like Sonos) players
 
 SpotConnect can run on any machine that has access to your local network (Windows, MacOS x86 and arm64, Linux x86, x86_64, arm, aarch64, sparc, mips, powerpc, Solaris and FreeBSD). It does not need to be on your main computer. (For example, a Raspberry Pi works well). It will detect UPnP/Sonos players, create as many virtual Spotify Connect devices as needed, and act as a bridge/proxy between Spotify controller (iPhone, iPad, PC, Mac ...) and the real UPnP/Sonos players.
 
