@@ -106,7 +106,8 @@ bool byteBuffer::write(const uint8_t* src, size_t size) {
 
 uint32_t baseCodec::index = 0;
 
-baseCodec::baseCodec(std::string mimeType, bool store) : mimeType(mimeType) { 
+baseCodec::baseCodec(std::string mimeType, uint32_t rate, uint8_t channels, uint8_t size, bool store) : 
+                    rate(rate), channels(channels), size(size), mimeType(mimeType) {
     FILE* storage = NULL;
 
     if (store) {
@@ -124,6 +125,12 @@ baseCodec::baseCodec(std::string mimeType, bool store) : mimeType(mimeType) {
 /****************************************************************************************
  * PCM codec
  */
+
+pcmCodec::pcmCodec(uint32_t rate, uint8_t channels, uint8_t size, bool store) :
+    baseCodec("audio/L" + std::to_string(size * 8) + ";rate=" + std::to_string(rate) + ";channels=" + std::to_string(channels), 
+              rate, channels, size, store) {
+}  
+
 uint8_t* pcmCodec::readInner(size_t& size) {
     uint8_t* data = pcm->readInner(size);
 
@@ -162,7 +169,7 @@ size_t pcmCodec::read(uint8_t* dst, size_t size, size_t min) {
 }
 
 uint64_t pcmCodec::initialize(int64_t duration) {
-    return ((44100LL * 2 * 2 * duration) / 1000) & ~1LL;
+    return (((uint64_t) rate * channels * size * duration) / 1000) & ~1LL;
 }
 
 /****************************************************************************************
@@ -198,7 +205,7 @@ uint64_t wavCodec::initialize(int64_t duration) {
     };
 
     // get the maximum payload size
-    uint64_t length = duration ? (44100LL * 2 * 2 * duration) / 1000 : UINT32_MAX;
+    uint64_t length = duration ? ((uint64_t) rate * channels * size * duration) / 1000 : UINT32_MAX;
     length = std::min(length, (uint64_t) (UINT32_MAX - offsetof(struct header, subchunk2Id)));
 
 #if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
@@ -243,9 +250,9 @@ uint64_t flacCodec::initialize(int64_t duration) {
 
     FLAC__bool ok = FLAC__stream_encoder_set_verify(codec, false);
     ok &= FLAC__stream_encoder_set_compression_level(codec, level);
-    ok &= FLAC__stream_encoder_set_channels(codec, 2);
-    ok &= FLAC__stream_encoder_set_bits_per_sample(codec, 16);
-    ok &= FLAC__stream_encoder_set_sample_rate(codec, 44100);
+    ok &= FLAC__stream_encoder_set_channels(codec, channels);
+    ok &= FLAC__stream_encoder_set_bits_per_sample(codec, size * 8);
+    ok &= FLAC__stream_encoder_set_sample_rate(codec, rate);
     ok &= FLAC__stream_encoder_set_blocksize(codec, 1024);
     ok &= FLAC__stream_encoder_set_streamable_subset(codec, true);
     ok &= !FLAC__stream_encoder_init_stream(codec, flacWrite, NULL, NULL, NULL, this);
@@ -257,13 +264,13 @@ uint64_t flacCodec::initialize(int64_t duration) {
     return 0;
 }
 
-bool flacCodec::pcmWrite(const uint8_t* data, size_t size) {
-    if (encoded->space() < std::max(size * 2, (size_t)16384)) return false;
+bool flacCodec::pcmWrite(const uint8_t* data, size_t len) {
+    if (encoded->space() < std::max(len * 2, (size_t)16384)) return false;
     //assert((size & 0x03) != 0);
 
-    auto flacSamples = new FLAC__int32[size];
-    for (size_t i = 0; i < size / 2; i++, data += 2) flacSamples[i] = *(int16_t*)data;
-    FLAC__stream_encoder_process_interleaved((FLAC__StreamEncoder*)flac, flacSamples, size / 4);
+    auto flacSamples = new FLAC__int32[len];
+    for (size_t i = 0; i < len / 2; i++, data += 2) flacSamples[i] = *(int16_t*)data;
+    FLAC__stream_encoder_process_interleaved((FLAC__StreamEncoder*)flac, flacSamples, len / 4);
     delete[] flacSamples;
 
     return true;
@@ -280,7 +287,7 @@ void flacCodec::drain(void) {
  * MP3 codec
  */
 
-mp3Codec::mp3Codec(int rate) : baseCodec("audio/mpeg"), rate(rate) {
+mp3Codec::mp3Codec(int bitrate, uint32_t rate, uint8_t channels, uint8_t size, bool store) : baseCodec("audio/mpeg", rate, channels, size, store), bitrate(bitrate) {
     pcm.reset();
     pcm = std::make_shared<byteBuffer>();
 }
@@ -321,7 +328,7 @@ uint64_t mp3Codec::initialize(int64_t duration) {
     shine_config_t config;
     shine_set_config_mpeg_defaults(&config.mpeg);
 
-    config.wave.samplerate = 44100;
+    config.wave.samplerate = rate;
     config.wave.channels = PCM_STEREO;
     config.mpeg.bitr = rate;
     config.mpeg.mode = STEREO;

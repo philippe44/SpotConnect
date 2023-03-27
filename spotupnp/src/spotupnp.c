@@ -67,7 +67,7 @@ tMRConfig			glMRConfig = {
 							{0, 0, 0, 0, 0, 0 }, // MAC
 							1,			// UPnPMax
 							100,		// MaxVolume
-							"mp3",	    // Codec
+							"flac",	    // Codec
 							160,		// OggRate
 							false,		// Flow
 							true,		// Gapless

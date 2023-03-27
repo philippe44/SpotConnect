@@ -122,9 +122,9 @@ private:
     int64_t contentLength;
 
     struct shadowPlayer* shadow;
-    void* mdnsService;
+    std::unique_ptr<bell::MDNSService> mdnsService;
 
-    // vector would ne enough but it does not seem to be any faster than deque
+    // vector would be enough but it does not seem to be any faster than deque
     std::deque<std::shared_ptr<HTTPstreamer>> streamers;
     std::mutex streamersMutex;
 
@@ -410,9 +410,12 @@ void CSpotPlayer::notify(enum shadowEvent event, va_list args) {
         spirc->setPause(true);
         break;
     case SHADOW_STOP:
-        // a non expected STOP is a disconnect, it frees up player from Spotify
         if (streamers.front()->state != HTTPstreamer::DRAINED) {
+            // a non expected STOP is a disconnect, it frees up player from Spotify
             disconnect();
+        } else {
+            // otherwise it means we have finished playing
+            spirc->setPause(true);
         }
         break;
     default:
@@ -429,7 +432,7 @@ void CSpotPlayer::teardown() {
 
     // stop all streamers (shaed_ptr's destructor will be called)
     streamers.clear();
-    MDNSService::unregisterService(mdnsService);
+    mdnsService->unregisterService();
 
     // then just wait    
     std::scoped_lock lock(this->runningMutex);
