@@ -56,13 +56,16 @@ option(USE_PORTAUDIO "Enable PortAudio" OFF)
 set(CMAKE_BUILD_TYPE Debug CACHE STRING "CMake Build Type")
 
 # @TODO Full command line, for the forgetful
-# cmake ..\.. -A Win32 -DBELL_EXTERNAL_MBEDTLS=..\..\..\..\..\mbedtls\build\win32\cmake
-# cmake <dir> [-DCMAKE_SYSTEM_NAME=<cmake-os>] [-DCMAKE_SYSTEM_PROCESSOR=<cmake-cpu>] [-DCMAKE_C_COMPILER=<cc>] [-DCMAKE_CXX_COMPILER=<cxx>] [-DHOST=<os> [-DPLATFORM=<cpu>] -DBELL_EXTERNAL_MBEDTLS=<dir>/../../mbedtls/<mbed-build-dir>/cmake
+# cmake <cmake-root-file-dir> -A Win32 -DBELL_EXTERNAL_MBEDTLS=<mbedtls-build-dir>\cmake
+# cmake <cmake-root-file-dir> [-DCMAKE_SYSTEM_NAME=<cmake-os>] [-DCMAKE_SYSTEM_PROCESSOR=<cmake-cpu>] [-DCMAKE_C_COMPILER=<cc>] [-DCMAKE_CXX_COMPILER=<cxx>] [-DHOST=<os> [-DPLATFORM=<cpu>] -DBELL_EXTERNAL_MBEDTLS=<mbedtls-build-dir>/cmake
 
 set(BELL_DISABLE_CODECS ON)
 set(BELL_VORBIS_FLOAT ON)
 set(BELL_DISABLE_SINKS ON)
 set(BELL_DISABLE_AVAHI ON)
+
+# set(BELL_DISABLE_FMT ON)
+# set(BELL_DISABLE_REGEX ON)
 
 # CMake options
 set(CMAKE_CXX_STANDARD 20)
@@ -95,7 +98,7 @@ find_package(libcodecs REQUIRED CONFIG PATHS ${BASE}/common/libcodecs)
 get_target_property(_INFO libcodecs::codecs INTERFACE_INCLUDE_DIRECTORIES)
 target_include_directories(${PROJECT} PRIVATE "${_INFO}")
 get_target_property(_INFO libcodecs::codecs IMPORTED_LOCATION_RELEASE)
-set(BELL_EXTERNAL_VORBIS "${_INFO}")
+set(BELL_EXTERNAL_VORBIS "${_INFO}" CACHE STRING "")
 # or do manually
 # target_include_directories(${PROJECT} PRIVATE ${BASE}/common/libcodecs/targets/include/flac ${BASE}/common/libcodecs/targets/include/shine)
 # target_include_directories(${PROJECT} PRIVATE ${BASE}/common/libcodecs/targets/include/ogg ${BASE}/common/libcodecs/targets/include/vorbis)
