@@ -167,7 +167,7 @@ auto CSpotPlayer::postHandler(struct mg_connection* conn) {
     // Prepare a success response for spotify
     obj["status"] = 101;
     obj["spotifyError"] = 0;
-    obj["statusString"] = "ERROR-OK";
+    obj["statusString"] = "OK";
 
     std::string body = "";
     auto requestInfo = mg_get_request_info(conn);
