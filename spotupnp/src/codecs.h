@@ -42,14 +42,15 @@ private:
 protected:
     std::shared_ptr<byteBuffer> pcm, encoded;
     int total = 0;
-    uint32_t rate;
-    uint8_t channels, size;
+    uint32_t rate = 44100;
+    uint8_t channels = 2, size = 2;
 
 public:
     std::string mimeType;
 
-    baseCodec(std::string mimeType, uint32_t rate, uint8_t channels, uint8_t size, bool store = false);
+    baseCodec(std::string mimeType, bool store = false);
     virtual ~baseCodec(void) { };
+    virtual void pcmParam(uint32_t rate, uint8_t channels = 2, uint8_t size = 2) { rate = rate; channels = channels; size = size; }
     virtual bool pcmWrite(const uint8_t* data, size_t size) { return pcm->write(data, size); }
     void unlock(void) { encoded->unlock(); }
     bool isEmpty(void) { return encoded->used(); }
@@ -62,7 +63,8 @@ public:
 
 class pcmCodec : public::baseCodec {
 public:
-    pcmCodec(uint32_t rate = 44100, uint8_t channels = 2, uint8_t size = 2, bool store = false);
+    pcmCodec(bool store = false) : baseCodec("audio/L16;rate=44100;channels=2", store) { }
+    virtual void pcmParam(uint32_t rate, uint8_t channels = 2, uint8_t size = 2);
     virtual uint64_t initialize(int64_t duration);
     virtual size_t read(uint8_t* dst, size_t size, size_t min);
     virtual uint8_t* readInner(size_t& size);
@@ -73,7 +75,7 @@ private:
     size_t position = 0;
 
 public:
-    wavCodec(uint32_t rate = 44100, uint8_t channels = 2, uint8_t size = 2, bool store = false) : baseCodec("audio/wav", rate, channels, size, store) {  }
+    wavCodec(bool store = false) : baseCodec("audio/wav", store) {  }
     virtual uint64_t initialize(int64_t duration);
 };
 
@@ -84,7 +86,7 @@ private:
     bool drained = false;
 
 public:
-    flacCodec(int level = 5, uint32_t rate = 44100, uint8_t channels = 2, uint8_t size = 2, bool store = false) : baseCodec("audio/flac", rate, channels, size, store), level(level) { }
+    flacCodec(int level = 5, bool store = false) : baseCodec("audio/flac", store), level(level) { }
     virtual ~flacCodec(void);
     virtual uint64_t initialize(int64_t duration);
     virtual bool pcmWrite(const uint8_t* data, size_t size);
@@ -99,7 +101,7 @@ private:
     int16_t* scratch;
 
 public:
-    mp3Codec(int bitrate = 160, uint32_t rate = 44100, uint8_t channels = 2, uint8_t size = 2, bool store = false);
+    mp3Codec(int bitrate = 160, bool store = false);
     virtual ~mp3Codec(void);
     virtual uint64_t initialize(int64_t duration);
     virtual bool pcmWrite(const uint8_t* data, size_t size);

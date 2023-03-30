@@ -106,8 +106,7 @@ bool byteBuffer::write(const uint8_t* src, size_t size) {
 
 uint32_t baseCodec::index = 0;
 
-baseCodec::baseCodec(std::string mimeType, uint32_t rate, uint8_t channels, uint8_t size, bool store) : 
-                    rate(rate), channels(channels), size(size), mimeType(mimeType) {
+baseCodec::baseCodec(std::string mimeType, bool store) : mimeType(mimeType) {
     FILE* storage = NULL;
 
     if (store) {
@@ -126,10 +125,11 @@ baseCodec::baseCodec(std::string mimeType, uint32_t rate, uint8_t channels, uint
  * PCM codec
  */
 
-pcmCodec::pcmCodec(uint32_t rate, uint8_t channels, uint8_t size, bool store) :
-    baseCodec("audio/L" + std::to_string(size * 8) + ";rate=" + std::to_string(rate) + ";channels=" + std::to_string(channels), 
-              rate, channels, size, store) {
-}  
+void pcmCodec::pcmParam(uint32_t rate, uint8_t channels, uint8_t size) {
+    baseCodec:pcmParam(rate, channels, size);
+    mimeType = "audio/L" + std::to_string(size * 8) + ";rate=" + std::to_string(rate) +
+        ";channels=" + std::to_string(channels);
+}
 
 uint8_t* pcmCodec::readInner(size_t& size) {
     uint8_t* data = pcm->readInner(size);
@@ -287,7 +287,7 @@ void flacCodec::drain(void) {
  * MP3 codec
  */
 
-mp3Codec::mp3Codec(int bitrate, uint32_t rate, uint8_t channels, uint8_t size, bool store) : baseCodec("audio/mpeg", rate, channels, size, store), bitrate(bitrate) {
+mp3Codec::mp3Codec(int bitrate, bool store) : baseCodec("audio/mpeg", store), bitrate(bitrate) {
     pcm.reset();
     pcm = std::make_shared<byteBuffer>();
 }
