@@ -8,9 +8,9 @@ The audio, after being decoded from vorbis, can be sent in plain, or re-encoded 
 ## Installing
 
 1. Pre-built binaries are in bin/ directory of this repository. You can download the whole repository as a zip file, clone it using git, or go to the [bin/ folder in the web interface](https://github.com/philippe44/SpotConnect/tree/master/bin) and download the version that matches your OS. It's also possible to download files manually in a terminal by typing (e.g. for spotupnp arm version)<br/>`wget https://raw.githubusercontent.com/philippe44/SpotConnect/master/spotupnp/bin/spotupnp-linux--arm` 
-
-		* For **UPnP/Sonos**, the file is `spotupnp-<os>-<platform>` (so `airupnp-macos-arm64` for UPnP/Sonos on MacOS + arm CPU) 
-
+```
+For UPnP/Sonos, the file is `spotupnp-<os>-<platform>` (so `airupnp-macos-arm64` for UPnP/Sonos on MacOS + arm CPU) 
+```	
 2. There is a "-static" version of each application that has all static libraries built-in. Use of these is (really) not recommended unless the regular version fails. For MacOS users, you need to install openSSL and do the following steps to use the dynamic load library version:
 	- install openssl: `brew install openssl`. This creates libraries (or at least links) into `/usr/local/opt/openssl[/x.y.z]/lib` where optional 'x.y.z' is a version number
 	- create links to these libraries: 
