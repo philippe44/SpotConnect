@@ -163,11 +163,18 @@ CSpotPlayer::~CSpotPlayer() {
 }
 
 auto CSpotPlayer::postHandler(struct mg_connection* conn) {
+#ifdef BELL_ONLY_CJSON
+    cJSON* obj = cJSON_CreateObject();
+    cJSON_AddNumberToObject(obj, "status", 101);
+    cJSON_AddStringToObject(obj, "statusString", "OK");
+    cJSON_AddNumberToObject(obj, "spotifyError", 0);
+#else
     nlohmann::json obj;
     // Prepare a success response for spotify
     obj["status"] = 101;
     obj["spotifyError"] = 0;
     obj["statusString"] = "OK";
+#endif
 
     std::string body = "";
     auto requestInfo = mg_get_request_info(conn);
@@ -190,7 +197,15 @@ auto CSpotPlayer::postHandler(struct mg_connection* conn) {
         clientConnected.give();
     }
 
+#ifdef BELL_ONLY_CJSON
+    auto str = cJSON_PrintUnformatted(obj);
+    cJSON_Delete(obj);
+    std::string objStr(str);
+    free(str);
+    return server->makeJsonResponse(objStr);
+#else
     return server->makeJsonResponse(obj.dump());
+#endif
 }
 
 void CSpotPlayer::trackHandler(void) {
