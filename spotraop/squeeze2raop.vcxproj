@@ -1,0 +1,133 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Static|Win32">
+      <Configuration>Static</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="crosstools\src\cross_log.c" />
+    <ClCompile Include="crosstools\src\cross_net.c" />
+    <ClCompile Include="crosstools\src\cross_ssl.c">
+      <LanguageStandard_C Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">stdc11</LanguageStandard_C>
+      <LanguageStandard_C Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">stdc11</LanguageStandard_C>
+      <LanguageStandard_C Condition="'$(Configuration)|$(Platform)'=='Static|Win32'">stdc11</LanguageStandard_C>
+    </ClCompile>
+    <ClCompile Include="crosstools\src\cross_thread.c" />
+    <ClCompile Include="crosstools\src\cross_util.c" />
+    <ClCompile Include="crosstools\src\platform.c" />
+    <ClCompile Include="http-fetcher\src\http_error_codes.c" />
+    <ClCompile Include="http-fetcher\src\http_fetcher.c" />
+    <ClCompile Include="squeeze2raop\config_raop.c" />
+    <ClCompile Include="squeeze2raop\squeeze2raop.c" />
+    <ClCompile Include="squeezelite\alac.c" />
+    <ClCompile Include="squeezelite\buffer.c" />
+    <ClCompile Include="squeezelite\decode.c" />
+    <ClCompile Include="squeezelite\faad.c" />
+    <ClCompile Include="squeezelite\flac.c" />
+    <ClCompile Include="squeezelite\mad.c" />
+    <ClCompile Include="squeezelite\main.c" />
+    <ClCompile Include="squeezelite\metadata.c" />
+    <ClCompile Include="squeezelite\opus.c" />
+    <ClCompile Include="squeezelite\output.c" />
+    <ClCompile Include="squeezelite\output_pack.c" />
+    <ClCompile Include="squeezelite\output_raop.c" />
+    <ClCompile Include="squeezelite\pcm.c" />
+    <ClCompile Include="squeezelite\process.c" />
+    <ClCompile Include="squeezelite\resample.c" />
+    <ClCompile Include="squeezelite\slimproto.c" />
+    <ClCompile Include="squeezelite\stream.c" />
+    <ClCompile Include="squeezelite\utils.c" />
+    <ClCompile Include="squeezelite\vorbis.c" />
+  </ItemGroup>
+  <ItemGroup>
+    <Library Include="libcodecs\targets\win32\x86\libcodecs.lib" />
+    <Library Include="libmdns\targets\win32\x86\libmdns.lib" />
+    <Library Include="libpupnp\targets\win32\x86\libpupnp.lib" />
+    <Library Include="libpthreads4w\targets\win32\x86\libpthreadVC3.lib" />
+    <Library Include="libraop\targets\win32\x86\libraop.lib" />
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <VCProjectVersion>16.0</VCProjectVersion>
+    <Keyword>Win32Proj</Keyword>
+    <ProjectGuid>{9678E510-4E2B-46A1-9357-5AF7827EA1EF}</ProjectGuid>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Label="Configuration" Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <UseDebugLibraries>true</UseDebugLibraries>
+  </PropertyGroup>
+  <PropertyGroup Label="Configuration" Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <UseDebugLibraries>false</UseDebugLibraries>
+  </PropertyGroup>
+  <PropertyGroup>
+    <ConfigurationType>Application</ConfigurationType>
+    <PlatformToolset>v143</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Label="Shared">
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup>
+    <IntDir>$(SolutionDir)\$(ProjectName)\build\$(Platform)\$(Configuration)\</IntDir>
+    <OutDir>$(SolutionDir)\bin\</OutDir>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Static|Win32'">
+    <TargetName>$(ProjectName)-static</TargetName>
+  </PropertyGroup>
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <DisableSpecificWarnings>4129;4018;4244;4101;4267;4102;4068;4142</DisableSpecificWarnings>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>RESAMPLE;CODECS;USE_SSL;FLAC__NO_DLL;LINKALL;UPNP_STATIC_LIB;_CRT_NONSTDC_NO_DEPRECATE;_CRT_SECURE_NO_WARNINGS;_WINSOCK_DEPRECATED_NO_WARNINGS;WIN32;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <AdditionalIncludeDirectories>http-fetcher/include;libraop\targets\include;squeezelite;nanopb;squeeze2raop\inc;crosstools\src;libopenssl\targets\win32\$(PlatformTarget)\include;libpupnp\targets\win32\$(PlatformTarget)\include\addons;libpupnp\targets\win32\$(PlatformTarget)\include\upnp;libpupnp\targets\win32\$(PlatformTarget)\include\ixml;libmdns\targets\include\mdnssvc;libmdns\targets\include\mdnssd;libpthreads4w\targets\win32\$(PlatformTarget)\include;libcodecs\targets\include\flac;libcodecs\targets\include\mad;libcodecs\targets\include\vorbis;libcodecs\targets\include\ogg;libcodecs\targets\include\opus;libcodecs\targets\include\opusfile;libcodecs\targets\include\faad2;libcodecs\targets\include\soxr;libcodecs\targets\include\shine;libcodecs\targets\include\addons;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <ProgramDataBaseFileName>$(TEMP)vc$(PlatformToolsetVersion)$(ProjectName).pdb</ProgramDataBaseFileName>
+      <LanguageStandard_C Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Default</LanguageStandard_C>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalLibraryDirectories>
+      </AdditionalLibraryDirectories>
+      <AdditionalDependencies>ws2_32.lib;wsock32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <IgnoreSpecificDefaultLibraries>libcmt;libcmtd</IgnoreSpecificDefaultLibraries>
+    </Link>
+    <Manifest>
+      <AdditionalManifestFiles>manifest.xml</AdditionalManifestFiles>
+    </Manifest>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Static|Win32'">
+    <ClCompile>
+      <PreprocessorDefinitions>LINKALL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ProgramDataBaseFileName Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">$(TEMP)vc$(PlatformToolsetVersion)$(ProjectName).pd</ProgramDataBaseFileName>
+    </ClCompile>
+    <Link>
+      <AdditionalLibraryDirectories>libopenssl\targets\win32\$(PlatformTarget);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>libopenssl_static.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+    <Manifest>
+      <AdditionalManifestFiles>manifest.xml</AdditionalManifestFiles>
+    </Manifest>
+  </ItemDefinitionGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+</Project>

@@ -1,6 +1,3 @@
-[submodule "common/libpupnp"]
-	path = common/libpupnp
-	url = https://github.com/philippe44/libpupnp
 [submodule "common/libcodecs"]
 	path = common/libcodecs
 	url = https://github.com/philippe44/libcodecs
@@ -17,3 +14,15 @@
 [submodule "common/libmbedtls"]
 	path = common/libmbedtls
 	url = https://github.com/philippe44/libmbedtls
+[submodule "spotraop/libraop"]
+	path = spotraop/libraop
+	url = https://github.com/philippe44/libraop
+[submodule "spotraop/http-fetcher"]
+	path = spotraop/http-fetcher
+	url = https://github.com/philippe44/http-fetcher
+[submodule "spotraop/libopenssl"]
+	path = spotraop/libopenssl
+	url = https://github.com/philippe44/libopenssl
+[submodule "spotraop/libmdns"]
+	path = spotraop/libmdns
+	url = https://github.com/philippe44/libmdns

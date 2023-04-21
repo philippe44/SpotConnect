@@ -41,6 +41,7 @@ build*/
 *.bat
 *.sh
 *.old
+*.log
 .vs/
 
 # Added files

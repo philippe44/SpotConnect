@@ -8,21 +8,29 @@
 #include <inttypes.h>
 #include <fstream>
 #include <stdarg.h>
-#include <ApResolve.h>
-#include "MDNSService.h"
-#include "SpircHandler.h"
-#include "LoginBlob.h"
-#include "BellHTTPServer.h"
-#
-#include "CentralAudioBuffer.h"
+#include <deque>
+#include "time.h"
+
+#ifdef BELL_ONLY_CJSON
+#include "cJSON.h"
+#else
+#include "nlohmann/json.hpp"
+#endif
 #include "Logger.h"
 #include "Utils.h"
+#include "ApResolve.h"
+#include "MDNSService.h"
+#include "SpircHandler.h"
+#include "TrackPlayer.h"
+#include "CSpotContext.h"
+#include "LoginBlob.h"
+#include "BellHTTPServer.h"
+#include "CentralAudioBuffer.h"
+#include "protobuf/metadata.pb.h"
 
 #include "HTTPstreamer.h"
-
 #include "spotify.h"
 #include "metadata.h"
-#include "time.h"
 #include "codecs.h"
 
 static uint16_t portBase, portRange;
@@ -35,11 +43,13 @@ class chunkManager : public bell::Task {
 public:
     std::atomic<bool> isRunning = true;
     std::atomic<bool> isPaused = true;
-    chunkManager(std::shared_ptr<bell::CentralAudioBuffer> centralAudioBuffer, std::function<void()> trackHandler, std::function<bool(const uint8_t*, size_t)> audioHandler);
+    chunkManager(std::function<void()> trackHandler, std::function<bool(const uint8_t*, size_t)> audioHandler);
+    size_t writePCM(uint8_t* data, size_t bytes, std::string_view trackId, size_t sequence);
     void teardown();
+    void flush();
 
 private:
-    std::shared_ptr<bell::CentralAudioBuffer> centralAudioBuffer;
+    std::unique_ptr<bell::CentralAudioBuffer> centralAudioBuffer;
     std::function<void()> trackHandler;
     std::function<bool(uint8_t*, size_t)> audioHandler;
     std::mutex runningMutex;
@@ -47,11 +57,10 @@ private:
     void runTask() override;
 };
 
-chunkManager::chunkManager(std::shared_ptr<bell::CentralAudioBuffer> centralAudioBuffer, 
-                            std::function<void()> trackHandler, std::function<bool(const uint8_t*, size_t)> audioHandler)
+chunkManager::chunkManager(std::function<void()> trackHandler, std::function<bool(const uint8_t*, size_t)> audioHandler)
     : bell::Task("player", 16 * 1024, 0, 0) {
     this->isPaused = false;
-    this->centralAudioBuffer = centralAudioBuffer;
+    this->centralAudioBuffer = std::make_unique<bell::CentralAudioBuffer>(128);
     this->trackHandler = trackHandler;
     this->audioHandler = audioHandler;
     startTask();
@@ -92,9 +101,17 @@ void chunkManager::runTask() {
     }
 }
 
+size_t chunkManager::writePCM(uint8_t* data, size_t bytes, std::string_view trackId, size_t sequence) {
+    return centralAudioBuffer->writePCM(data, bytes, sequence);
+}
+
 void chunkManager::teardown() {
     isRunning = false;
     std::scoped_lock lock(runningMutex);
+}
+
+void chunkManager::flush() {
+    centralAudioBuffer->clearBuffer();
 }
 
 /****************************************************************************************
@@ -107,7 +124,6 @@ private:
         
     std::mutex runningMutex;
     bell::WrappedSemaphore clientConnected;
-    std::shared_ptr<bell::CentralAudioBuffer> centralAudioBuffer;
     int volume = 0;
     int32_t startOffset;
     std::atomic<int> expectedSync;
@@ -272,7 +288,7 @@ void CSpotPlayer::flowSync(cspot::CDNTrackStream::TrackInfo *trackInfo) {
  void CSpotPlayer::eventHandler(std::unique_ptr<cspot::SpircHandler::Event> event) {
     switch (event->eventType) {
     case cspot::SpircHandler::EventType::PLAYBACK_START: {
-        centralAudioBuffer->clearBuffer();
+        chunker->flush();
         shadowRequest(shadow, SPOT_STOP);
 
         // memorize position for when track's beginning will be detected
@@ -303,7 +319,7 @@ void CSpotPlayer::flowSync(cspot::CDNTrackStream::TrackInfo *trackInfo) {
     case cspot::SpircHandler::EventType::PREV:
     case cspot::SpircHandler::EventType::FLUSH: {
         // send when there is no next, just clean everything
-        centralAudioBuffer->clearBuffer();
+        chunker->flush();
         shadowRequest(shadow, SPOT_STOP);
         std::scoped_lock lock(streamersMutex);
         streamers.clear();
@@ -316,7 +332,7 @@ void CSpotPlayer::flowSync(cspot::CDNTrackStream::TrackInfo *trackInfo) {
         /* Seek does not exist for shadow's player but we need to keep the current streamer. So
          * first stop frame feeding then empty pcm buffer and finally stop that should close the
          * current connection and PLAY should open a new one, all on the same url/streamer */
-        centralAudioBuffer->clearBuffer();
+        chunker->flush();
 
         std::scoped_lock lock(streamersMutex);
 
@@ -457,7 +473,7 @@ void CSpotPlayer::teardown() {
 
 void CSpotPlayer::disconnect() {
     CSPOT_LOG(info, "Disconnecting %s", name.c_str());
-    centralAudioBuffer->clearBuffer();
+    chunker->flush();
     shadowRequest(shadow, SPOT_STOP);
     chunker->teardown();
     // no need to protect streamers as the chunkManager is already down    
@@ -531,7 +547,6 @@ void CSpotPlayer::runTask() {
 
         CSPOT_LOG(info, "Spotified client connected for %s", name.c_str());
 
-        centralAudioBuffer = std::make_shared<bell::CentralAudioBuffer>(128);
         auto ctx = cspot::Context::createFromBlob(blob);
         ctx->config.audioFormat = format;
 
@@ -542,11 +557,21 @@ void CSpotPlayer::runTask() {
         if (token.size() > 0) {
             spirc = std::make_unique<cspot::SpircHandler>(ctx);
 
+            // Create a player, pass the tack handler
+            chunker = std::make_unique<chunkManager>(
+                [this](void) {
+                    return trackHandler();
+                },
+                [this](const uint8_t* data, size_t bytes) {
+                    std::scoped_lock lock(streamersMutex);
+                return !streamers.empty() ? streamers.front()->feedPCMFrames(data, bytes) : true;
+                });
+
             // set call back to calculate a hash on trackId
             spirc->getTrackPlayer()->setDataCallback(
                 [this](uint8_t* data, size_t bytes, std::string_view trackId, size_t sequence) {
-                    return centralAudioBuffer->writePCM(data, bytes, sequence);
-            });
+                    return chunker->writePCM(data, bytes, trackId, sequence);
+                });
 
             // set event (PLAY, VOLUME...) handler
             spirc->setEventHandler(
@@ -556,16 +581,6 @@ void CSpotPlayer::runTask() {
 
             // Start handling mercury messages
             ctx->session->startTask();
-
-            // Create a player, pass the tack handler
-            chunker = std::make_unique<chunkManager>(centralAudioBuffer,
-                [this](void) {
-                    return trackHandler();
-                }, 
-                [this](const uint8_t* data, size_t bytes) {
-                    std::scoped_lock lock(streamersMutex);
-                    return !streamers.empty() ? streamers.front()->feedPCMFrames(data, bytes) : true;
-             });
 
             // exit when player has stopped (received a DISC)
             while (chunker->isRunning) {

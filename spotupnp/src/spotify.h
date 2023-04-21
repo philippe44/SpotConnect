@@ -8,6 +8,11 @@
 
 #include "metadata.h"
 #include "HTTPmode.h"
+#ifdef _WIN32
+#include <ws2tcpip.h>
+#else
+#include <arpa/inet.h>
+#endif
 
 #ifdef __cplusplus
 extern "C" {

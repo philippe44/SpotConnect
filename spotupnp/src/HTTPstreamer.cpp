@@ -10,8 +10,11 @@
 #include <sstream>
 #include <regex>
 #include <algorithm>
+#include <atomic>
 #ifndef _WIN32
 #include <arpa/inet.h>
+#else
+#include <ws2tcpip.h>
 #endif
 
 #include "Logger.h"

@@ -7,6 +7,7 @@
 #include <fstream>
 #include <cassert>
 #include <cstdint>
+#include <cstring>
 #include "Logger.h"
 #include "spotify.h"
 #include "metadata.h"

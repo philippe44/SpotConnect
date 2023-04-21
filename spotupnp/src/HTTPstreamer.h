@@ -10,6 +10,7 @@
 #include <memory>
 #include <inttypes.h>
 #include <map>
+#include <functional>
 
 #include "BellTask.h"
 #include "CDNTrackStream.h"

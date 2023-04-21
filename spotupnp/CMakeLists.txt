@@ -63,6 +63,7 @@ set(BELL_DISABLE_CODECS ON)
 set(BELL_VORBIS_FLOAT ON)
 set(BELL_DISABLE_SINKS ON)
 set(BELL_DISABLE_AVAHI ON)
+set(BELL_DISABLE_MQTT ON)
 
 # set(BELL_DISABLE_FMT ON)
 # set(BELL_DISABLE_REGEX ON)
@@ -88,11 +89,11 @@ add_executable(${PROJECT} ${SOURCES})
 list(APPEND EXTRA_INCLUDES ../common/crosstools/src)
 
 # UPnP
-target_include_directories(${PROJECT} PRIVATE ${BASE}/common/libpupnp/targets/${HOST}/${PLATFORM}/include/upnp)
-target_include_directories(${PROJECT} PRIVATE ${BASE}/common/libpupnp/targets/${HOST}/${PLATFORM}/include/ixml)
-target_include_directories(${PROJECT} PRIVATE ${BASE}/common/libpupnp/targets/${HOST}/${PLATFORM}/include/addons)
-#target_link_libraries(${PROJECT} PRIVATE ${BASE}/common/libpupnp/targets/${HOST}/${PLATFORM}/libpupnp.${LIB})
-list(APPEND EXTRA_LIBS ${BASE}/common/libpupnp/targets/${HOST}/${PLATFORM}/libpupnp.${LIB})
+target_include_directories(${PROJECT} PRIVATE ${BASE}/spotupnp/libpupnp/targets/${HOST}/${PLATFORM}/include/upnp)
+target_include_directories(${PROJECT} PRIVATE ${BASE}/spotupnp/libpupnp/targets/${HOST}/${PLATFORM}/include/ixml)
+target_include_directories(${PROJECT} PRIVATE ${BASE}/spotupnp/libpupnp/targets/${HOST}/${PLATFORM}/include/addons)
+#target_link_libraries(${PROJECT} PRIVATE ${BASE}/spotupnp/libpupnp/targets/${HOST}/${PLATFORM}/libpupnp.${LIB})
+list(APPEND EXTRA_LIBS ${BASE}/spotupnp/libpupnp/targets/${HOST}/${PLATFORM}/libpupnp.${LIB})
 
 # codecs with cmake
 find_package(libcodecs REQUIRED CONFIG PATHS ${BASE}/common/libcodecs)
