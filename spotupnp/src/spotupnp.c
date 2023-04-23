@@ -54,7 +54,7 @@ UpnpClient_Handle 	glControlPointHandle;
 struct sMR			*glMRDevices;
 int					glMaxDevices = MAX_DEVICES;
 uint16_t			glPortBase, glPortRange;
-char				glBinding[128] = "?";
+char				glInterface[128] = "?";
 
 log_level	main_loglevel = lINFO;
 log_level	util_loglevel = lWARN;
@@ -1003,9 +1003,9 @@ static void *MainThread(void *args) {
 		}
 
 		// try to detect IP change when not forced
-		if (inet_addr(glBinding) == INADDR_NONE) {
+		if (inet_addr(glInterface) == INADDR_NONE) {
 			struct in_addr host;
-			host = get_interface(!strchr(glBinding, '?') ? glBinding : NULL, NULL, NULL);
+			host = get_interface(!strchr(glInterface, '?') ? glInterface : NULL, NULL, NULL);
 			if (host.s_addr != INADDR_NONE && host.s_addr != glHost.s_addr) {
 				LOG_INFO("IP change detected %s", inet_ntoa(glHost));
 				Stop(false);
@@ -1199,7 +1199,7 @@ static bool Start(bool cold) {
 	char addr[128] = "";
 
 	// sscanf does not capture empty strings
-	if (!strchr(glBinding, '?') && !sscanf(glBinding, "%[^:]:%hu", addr, &glPort)) sscanf(glBinding, ":%hu", &glPort);
+	if (!strchr(glInterface, '?') && !sscanf(glInterface, "%[^:]:%hu", addr, &glPort)) sscanf(glInterface, ":%hu", &glPort);
 	
 	char* iface = NULL;
 	glHost = get_interface(addr, &iface, NULL);
@@ -1352,7 +1352,7 @@ bool ParseArgs(int argc, char **argv) {
 
 		switch (opt[0]) {
 		case 'b':
-			strcpy(glBinding, optarg);
+			strcpy(glInterface, optarg);
 			break;
 		case 'a':
 			sscanf(optarg, "%hu:%hu", &glPortBase, &glPortRange);

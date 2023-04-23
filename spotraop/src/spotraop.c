@@ -56,8 +56,8 @@ enum { VOLUME_FEEDBACK = 1, VOLUME_UNFILTERED = 2};
 int32_t				glLogLimit = -1;
 uint32_t			glMask;
 uint16_t			glPortBase, glPortRange;
-char 				glInterface[16] = "?";
-char				glExcludedModels[STR_LEN] = "aircast,airupnp,shairtunes2,airesp32";
+char 				glInterface[128] = "?";
+char				glExcludedModels[STR_LEN] = "aircast,airupnp,shairtunes2,airesp32,";
 char				glIncludedNames[STR_LEN];
 char				glExcludedNames[STR_LEN];
 struct sMR			glMRDevices[MAX_RENDERERS];
@@ -828,7 +828,7 @@ bool IsExcluded(char* Model, char* Name) {
 	char* q = glExcludedNames;
 	char* o = glIncludedNames;
 
-	if (glIncludedNames) {
+	if (*glIncludedNames) {
 		if (!Name) {
 			if (strcasestr(glIncludedNames, "<NULL>")) return false;
 			else return true;
@@ -841,7 +841,7 @@ bool IsExcluded(char* Model, char* Name) {
 		return true;
 	}
 
-	if (glExcludedModels && Model) {
+	if (*glExcludedModels && Model) {
 		do {
 			sscanf(p, "%[^,]", item);
 			if (strcasestr(Model, item)) return true;
@@ -849,7 +849,7 @@ bool IsExcluded(char* Model, char* Name) {
 		} while (*p++);
 	}
 
-	if (glExcludedNames && Name) {
+	if (*glExcludedNames && Name) {
 		do {
 			sscanf(q, "%[^,]", item);
 			if (strcasestr(Name, item)) return true;
@@ -1024,7 +1024,7 @@ bool ParseArgs(int argc, char **argv) {
 			glGracefullShutdown = false;
 			break;
 		case 'm':
-			strcpy(glExcludedModels, optarg);
+			strcat(glExcludedModels, optarg);
 			break;
 		case 'n':
 			strcpy(glExcludedNames, optarg);
