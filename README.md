@@ -1,5 +1,5 @@
 # SpotConnect: Enable Spotify Connect for UPnP and AirPlay devices 
-Use these applications to add Spotify Connect capabilities to UPnP (like Sonos) or AirPlay players. Respectively **spotupnp* for UPnP and **spotraop** for AirPlay
+Use these applications to add Spotify Connect capabilities to UPnP (like Sonos) or AirPlay players. Respectively **spotupnp** for UPnP and **spotraop** for AirPlay
 
 SpotConnect can run on any machine that has access to your local network (Windows, MacOS x86 and arm64, Linux x86, x86_64, arm, aarch64, sparc, mips, powerpc, Solaris and FreeBSD). It does not need to be on your main computer. (For example, a Raspberry Pi works well). It will detect UPnP/Sonos or AirPlay players, create as many virtual Spotify Connect devices as needed, and act as a bridge/proxy between Spotify controller (iPhone, iPad, PC, Mac ...) and the real UPnP/Sonos or AirPlay players.
 
