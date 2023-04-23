@@ -1,17 +1,19 @@
-# SpotConnect: Enable Spotify Connect for UPnP devices 
-Use thise application to add Spotify Connect capabilities to UPnP (like Sonos) players
+# SpotConnect: Enable Spotify Connect for UPnP and AirPlay devices 
+Use these applications to add Spotify Connect capabilities to UPnP (like Sonos) or AirPlay players. Respectively **spotupnp* for UPnP and **spotraop** for AirPlay
 
-SpotConnect can run on any machine that has access to your local network (Windows, MacOS x86 and arm64, Linux x86, x86_64, arm, aarch64, sparc, mips, powerpc, Solaris and FreeBSD). It does not need to be on your main computer. (For example, a Raspberry Pi works well). It will detect UPnP/Sonos players, create as many virtual Spotify Connect devices as needed, and act as a bridge/proxy between Spotify controller (iPhone, iPad, PC, Mac ...) and the real UPnP/Sonos players.
+SpotConnect can run on any machine that has access to your local network (Windows, MacOS x86 and arm64, Linux x86, x86_64, arm, aarch64, sparc, mips, powerpc, Solaris and FreeBSD). It does not need to be on your main computer. (For example, a Raspberry Pi works well). It will detect UPnP/Sonos or AirPlay players, create as many virtual Spotify Connect devices as needed, and act as a bridge/proxy between Spotify controller (iPhone, iPad, PC, Mac ...) and the real UPnP/Sonos or AirPlay players.
 
-The audio, after being decoded from vorbis, can be sent in plain, or re-encoded using mp3 or flac. The tracks can be sent one-by one and use the capability of UPnP players to do gapless playback by sending the next track ahead of the current one, but not all players support that or might simply be faulty. There is also a 'flow' mode where all tracks are sent in a continuous stream, similar to a webradio. Note that this mode can be brittle with regard to track position. In 'flow' mode, metadata are likely not to be sent, unlesss player supports 'icy' protocol.
+For UPnP, the audio, after being decoded from vorbis, can be sent in plain, or re-encoded using mp3 or flac. The tracks can be sent one-by one and use the capability of UPnP players to do gapless playback by sending the next track ahead of the current one, but not all players support that or might simply be faulty. There is also a 'flow' mode where all tracks are sent in a continuous stream, similar to a webradio. Note that this mode can be brittle with regard to track position. In 'flow' mode, metadata are likely not to be sent, unlesss player supports 'icy' protocol.
+
+For AirPlay, the audio can be re-encoded using ALAC or left as raw PCM.
 
 ## Installing
 
-1. Pre-built binaries are in bin/ directory of this repository. You can download the whole repository as a zip file, clone it using git, or go to the [bin/ folder in the web interface](https://github.com/philippe44/SpotConnect/tree/master/bin) and download the version that matches your OS. It's also possible to download files manually in a terminal by typing (e.g. for spotupnp arm version)<br/>`wget https://raw.githubusercontent.com/philippe44/SpotConnect/master/spotupnp/bin/spotupnp-linux--arm` 
+1. Pre-built binaries are in bin/ directory of reach repository (spotupnp or spotraop). You can download the whole repository as a zip file, clone it using git, or go to the [bin/ folder in the web interface](https://github.com/philippe44/SpotConnect/tree/master/bin) and download the version that matches your OS. It's also possible to download files manually in a terminal by typing (e.g. for spotupnp arm version)<br/>`wget https://raw.githubusercontent.com/philippe44/SpotConnect/master/spotupnp/bin/spotupnp-linux--arm` 
 ```
 For UPnP/Sonos, the file is `spotupnp-<os>-<platform>` (so `airupnp-macos-arm64` for UPnP/Sonos on MacOS + arm CPU) 
 ```	
-2. There is a "-static" version of each application that has all static libraries built-in. Use of these is (really) not recommended unless the regular version fails. For MacOS users, you need to install openSSL and do the following steps to use the dynamic load library version:
+For MacOS users, you need to install openSSL and do the following steps to use the dynamic load library version:
 	- install openssl: `brew install openssl`. This creates libraries (or at least links) into `/usr/local/opt/openssl[/x.y.z]/lib` where optional 'x.y.z' is a version number
 	- create links to these libraries: 
 	```
@@ -51,9 +53,10 @@ For each platform, there is a normal and a '-static' version. This one includes 
 - Pause made using native control application is sent back to Spotify
 - Re-scan for new / lost players happens every 30s
 - A config file (default `config.xml`) can be created for advanced tweaking (a reference version can be generated using  the `-i <file>` command line)
-- When you have more than one ethernet card, you case use `-b [ip]` to set what card to bind to. Note that 0.0.0.0 is not authorized
+- When you have more than one ethernet card, you case use `-b [ip|iface]` to set what card to bind to. Note that 0.0.0.0 is not authorized
 - Use `-l`for flow mode where audio is sent as a single continuous stream
-- Use `-b [ip|iface][:port]`to set network interface (ip@ or interface name as reported by ifconfig/ipconfig) to use and, for airupnp only, UPnP port to listen to (must be above the default 49152)
+- Use `-b [ip|iface][:port]`to set network interface (ip@ or interface name as reported by ifconfig/ipconfig) to use and, for spotupnp only, UPnP port to listen to (must be above the default 49152)
+- Use `-r` to set Spotify's Vorbis encoding rate
 - Use `-a <port>[:<count>]`to specify a port range (default count is 128)
 - Use of `-z` disables interactive mode (no TTY) **and** self-daemonizes (use `-p <file>` to get the PID). Use of `-Z` only disables interactive mode 
 - <strong>Do not daemonize (using & or any other method) the executable w/o disabling interactive mode (`-Z`), otherwise it will consume all CPU. On Linux, FreeBSD and Solaris, best is to use `-z`. Note that -z option is not available on MacOS or Windows</strong>
@@ -62,22 +65,30 @@ For each platform, there is a normal and a '-static' version. This one includes 
 
 The default configuration file is `config.xml`, stored in the same directory as the \<executable\>. Each of parameters below can be set in the `<common>` section to apply to all devices. It can also be set in any `<device>` section to apply only to a specific device and overload the value set in `<common>`. Use the `-x <config>`command line option to use a config file of your choice.
 
+### Common
 - `enabled 0|1` : in common section, enables new discovered players by default. In a dedicated section, enables the player
 - `name`        : The name that will appear for the device in AirPlay. You can change the default name.
+- `vorbis_rate 96|160|320` : set the Spotify bitrate
+
+### UPnP
 - `upnp_max`    : set the maximum UPnP version use to search players (default 1)
-- `artwork`	    : an URL to a fixed artwork to be displayed on player in flow mode
+- `artwork`	: an URL to a fixed artwork to be displayed on player in flow mode
 - `flow`        : enable flow mode
 - `gapless`     : use UPnP gapless mode (if players supports it)
 - `http_content_length`	   : same as `-g` command line parameter
-- `vorbis_rate 96|160|320` : set the Spotify bitrate
 - `codec mp3[:<bitrate>] | flc[:0..9] | wav | pcm`: format used to send HTTP audio. FLAC is recommended but uses more CPU (pcm only available for UPnP). For example, `mp3:320` for 320Kb/s MP3 encoding.
+
+### AirPlay
+- `codec alac|pcm`: format used to send audio
 
 These are the global parameters
 
 - `log_limit <-1 | n>` 	   : (default -1) when using log file, limits its size to 'n' MB (-1 = no limit)
 - `max_players`            : set the maximum of players (default 32)
 - `ports <port>[:<count>]` : set port range to use (see -a)
-- `binding ?|<iface>|<ip>` : set the network interface, ip or autodetect
+- `interface ?|<iface>|<ip>` : set the network interface, ip or autodetect
+
+There are many other parameters, to list all of them, use `-i <config>` to create a default config file.
 
 ## Start automatically in Linux
 
