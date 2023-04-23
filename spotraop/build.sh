@@ -8,8 +8,8 @@ list="x86_64-linux-gnu-gcc x86-linux-gnu-gcc arm-linux-gnueabi-gcc aarch64-linux
 declare -A alias=( [x86-linux-gnu-gcc]=i686-stretch-linux-gnu-gcc \
                    [x86_64-linux-gnu-gcc]=x86_64-stretch-linux-gnu-gcc \
                    [arm-linux-gnueabi-gcc]=armv7-stretch-linux-gnueabi-gcc \
-				   [armv5-linux-gnueabi-gcc]=armv6-stretch-linux-gnueabi-gcc \
-				   [armv6-linux-gnueabi-gcc]=armv6-stretch-linux-gnueabi-gcc \
+                   [armv5-linux-gnueabi-gcc]=armv6-stretch-linux-gnueabi-gcc \
+                   [armv6-linux-gnueabi-gcc]=armv6-stretch-linux-gnueabi-gcc \
                    [aarch64-linux-gnu-gcc]=aarch64-stretch-linux-gnu-gcc \
                    [sparc64-linux-gnu-gcc]=sparc64-stretch-linux-gnu-gcc \
                    [mips-linux-gnu-gcc]=mips64-stretch-linux-gnu-gcc \
@@ -21,14 +21,15 @@ declare -A alias=( [x86-linux-gnu-gcc]=i686-stretch-linux-gnu-gcc \
 
 declare -A cflags=( [sparc64-linux-gnu-gcc]="-mcpu=v7" \
                     [mips-linux-gnu-gcc]="-march=mips32" \
-					[armv5-linux-gnueabi-gcc]="-march=armv5t -mfloat-abi=soft" \
+                    [armv5-linux-gnueabi-gcc]="-march=armv5t -mfloat-abi=soft" \
                     [powerpc-linux-gnu-gcc]="-m32" )
+             #       [x86_64-solaris-gnu-gcc]="-mno-direct-extern-access" )
 					
-declare -a compilers
+declare -a compilers					
 
 IFS= read -ra candidates <<< "$list"
 
-# do we have "clean" somewhere in parameters (assuming no compiler has "clean" in it...
+# do we have "clean" somewhere in parameters (assuming no compiler has "clean" in it...)
 if [[ $@[*]} =~ clean ]]; then
 	clean="clean"
 fi	
@@ -55,17 +56,60 @@ for cc in ${candidates[@]}; do
 			compilers+=($cc)
 		fi
 	done
-done	
+done
 
-# then do the work
+pwd=$(pwd)
+
+declare -A cmake_name=( [linux]=Linux \
+						[freebsd]=FreeBSD \
+						[solaris]=SunOS \
+						[macos]=Darwin )
+
+declare -A cmake_processor=( )
+
+# then iterate selected platforms/compilers
 for cc in ${compilers[@]}
 do
 	IFS=- read -r platform host dummy <<< $cc
-	
+
+	build=build/$host-$platform
+		
+	mkdir -p $build && cd $build || continue
+
+	export CC=${alias[$cc]:-$cc} 
+	export CXX=${CC/gcc/g++}
+	export AR=${CC%-*}-ar
+	export RANLIB=${CC%-*}-ranlib
 	export CFLAGS=${cflags[$cc]}
-	make CC=${alias[$cc]:-$cc} HOST=$host PLATFORM=$platform $clean -j8
+
+	if [[ $CC =~ -gcc ]]; then
+		export CXX=${CC%-*}-g++
+		export LDFLAGS=-s
+	else
+		export CXX=${CC%-*}-c++
+		export LDFLAGS=-lc++
+		CFLAGS+=" -fno-temp-file -stdlib=libc++"
+	fi	
+
+	export CXXFLAGS=$CFLAGS
+
+	if [ -n "$clean" ] || [ -z "$(ls -A)" ]; then
+		rm -rf *
+		rm $pwd/bin/spotraop-$host-$platform*
+		cmake $pwd -DCMAKE_SYSTEM_NAME=${cmake_name["$host"]:-"$host"} -DCMAKE_SYSTEM_PROCESSOR=${cmake_processor["$platform"]:-"$platform"} -DCMAKE_C_COMPILER=$CC -DCMAKE_CXX_COMPILER=$CXX -DHOST=$host -DPLATFORM=$platform -DBELL_EXTERNAL_MBEDTLS=$pwd/../common/libmbedtls
+	fi
 	
-	if [[ -n $clean ]]; then
-		continue
+	make -j16 && mkdir -p $pwd/bin && cp ./spotraop-$host-$platform $pwd/bin
+
+	cd $pwd
+
+	# do an univeral build for macos
+	if [[ $host =~ macos ]]; then
+		universal=$pwd/bin/spotraop-macos
+		rm -f $universal
+		lipo -create -output $universal $universal-*
 	fi
 done
+
+
+

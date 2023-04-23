@@ -13,6 +13,8 @@
 #include <atomic>
 #ifndef _WIN32
 #include <arpa/inet.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
 #else
 #include <ws2tcpip.h>
 #endif
@@ -22,6 +24,7 @@
 #include "HTTPstreamer.h"
 
 #ifndef _WIN32
+#include <unistd.h>
 #define closesocket(s) close(s)
 #endif
 

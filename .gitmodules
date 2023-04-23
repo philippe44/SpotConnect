@@ -26,3 +26,6 @@
 [submodule "spotraop/libmdns"]
 	path = spotraop/libmdns
 	url = https://github.com/philippe44/libmdns
+[submodule "common/libpupnp"]
+	path = common/libpupnp
+	url = https://github.com/philippe44/libpupnp

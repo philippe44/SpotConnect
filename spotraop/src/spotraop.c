@@ -1,5 +1,5 @@
 /*
- *  Squeeze2raop - Squeezelite to Airplay bridge
+ *  SpotRaop - Spotify to Airplay bridge
  *
  *  (c) Philippe, philippe_44@outlook.com
  *
@@ -15,7 +15,10 @@
 #include <string.h>
 
 #include "platform.h"
-#include "squeezedefs.h"
+
+#if defined(_MSC_VER)
+#pragma comment(lib, "Ws2_32.lib")
+#endif
 
 #if USE_SSL
 #include <openssl/ssl.h>
@@ -31,17 +34,18 @@
 #include "cross_log.h"
 #include "cross_net.h"
 #include "cross_thread.h"
-#include "squeeze2raop.h"
-#include "config_raop.h"
-#include "metadata.h"
-
 #include "mdnssd.h"
 #include "mdnssvc.h"
 #include "http_fetcher.h"
+#include "raop_client.h"
 
-#define DISCOVERY_TIME 20
+#include "spotraop.h"
+#include "config_raop.h"
+#include "metadata.h"
+#include "spotify.h"
 
-#define MODEL_NAME_STRING	"RaopBridge"
+#define FRAMES_PER_BLOCK 352
+#define DISCOVERY_TIME	 60
 
 enum { VOLUME_IGNORE = 0, VOLUME_SOFT = 1, VOLUME_HARD = 2};
 enum { VOLUME_FEEDBACK = 1, VOLUME_UNFILTERED = 2};
@@ -51,11 +55,12 @@ enum { VOLUME_FEEDBACK = 1, VOLUME_UNFILTERED = 2};
 /*----------------------------------------------------------------------------*/
 int32_t				glLogLimit = -1;
 uint32_t			glMask;
+uint16_t			glPortBase, glPortRange;
 char 				glInterface[16] = "?";
-char				glExcluded[STR_LEN] = "aircast,airupnp,shairtunes2,airesp32";
-int					glMigration = 0;
+char				glExcludedModels[STR_LEN] = "aircast,airupnp,shairtunes2,airesp32";
+char				glIncludedNames[STR_LEN];
+char				glExcludedNames[STR_LEN];
 struct sMR			glMRDevices[MAX_RENDERERS];
-char				glPortOpen[STR_LEN];
 
 log_level	slimproto_loglevel = lINFO;
 log_level	stream_loglevel = lWARN;
@@ -69,53 +74,20 @@ bool 		log_cmdline = false;
 
 tMRConfig			glMRConfig = {
 							true,
-							true,
-							true,
-							false,
+							"",				// Name
+							{0, 0, 0, 0, 0, 0 }, // MAC
+							true,			// sendMetaData
+							true,			// sendCoverArt
+							160,			// VorbisRate
 							30, 			// IdleTimeout
 							0,				// RemoveTimeout
 							false,
 							"",				 // credentials
 							1000,			 // read_ahead
 							2,				 // VolumeMode = HARDWARE
-							-1,				 // Volume = nothing at first connection
 							VOLUME_FEEDBACK, // volumeFeedback
-							"-30:1, -15:50, 0:100",
-							true,			 // mute_on_pause
-							false,			 // alac_encode
+							true,			 // alac_encode
 					};
-
-static uint8_t LMSVolumeMap[129] = {
-			0, 3, 6, 7, 8, 10, 12, 13, 14, 16, 17, 18, 19, 20,
-			21, 22, 24, 25, 26, 27, 28, 28, 29, 30, 31, 32, 33,
-			34, 35, 36, 37, 37, 38, 39, 40, 41, 41, 42, 43, 44,
-			45, 45, 46, 47, 48, 48, 49, 50, 51, 51, 52, 53, 53,
-			54, 55, 55, 56, 57, 57, 58, 59, 60, 60, 61, 61, 62,
-			63, 63, 64, 65, 65, 66, 67, 67, 68, 69, 69, 70, 70,
-			71, 72, 72, 73, 73, 74, 75, 75, 76, 76, 77, 78, 78,
-			79, 79, 80, 80, 81, 82, 82, 83, 83, 84, 84, 85, 86,
-			86, 87, 87, 88, 88, 89, 89, 90, 91, 91, 92, 92, 93,
-			93, 94, 94, 95, 95, 96, 96, 97, 98, 99, 100
-		};
-
-sq_dev_param_t glDeviceParam = {
-					STREAMBUF_SIZE,
-					OUTPUTBUF_SIZE,
-					"aac,ogg,ops,ogf,flc,alc,wav,aif,pcm,mp3", // magic codec order
-					"?",
-					"",
-					{ 0x00,0x00,0x00,0x00,0x00,0x00 },	//mac
-					"",		//resolution
-					false,	// soft volume
-#if defined(RESAMPLE)
-					96000,
-					true,
-					"",
-#else
-					44100,
-#endif
-					{ "" },
-				} ;
 
 /*----------------------------------------------------------------------------*/
 /* locals */
@@ -142,25 +114,25 @@ static pthread_t			glActiveRemoteThread;
 static void					*glConfigID = NULL;
 static char					glConfigName[STR_LEN] = "./config.xml";
 static struct in_addr 		glHost;
-static char					glModelName[STR_LEN] = MODEL_NAME_STRING;
-static uint16_t				glPortBase, glPortRange;
-
 static char usage[] =
 
-			VERSION "\n"
-		   "See -t for license terms\n"
-		   "Usage: [options]\n"
-		   "  -s <server>[:<port>]\tConnect to specified server, otherwise uses autodiscovery to find server\n"
-		   "  -a <port>[:<count>]\tset inbound port base and range\n"
-		   "  -b <address>]\tNetwork address to bind to\n"
-		   "  -x <config file>\tread config from file (default is ./config.xml)\n"
-		   "  -i <config file>\tdiscover players, save <config file> and exit\n"
-   		   "  -m <name1,name2...>\texclude from search devices whose model name contains name1 or name 2 ...\n"
-		   "  -I \t\t\tauto save config at every network scan\n"
-		   "  -f <logfile>\t\tWrite debug to logfile\n"
-  		   "  -p <pid file>\t\twrite PID in file\n"
-		   "  -d <log>=<level>\tSet logging level, logs: all|slimproto|stream|decode|output|web|main|util|raop, level: error|warn|info|debug|sdebug\n"
-		   "  -M <modelname>\tSet the squeezelite player model name sent to the server (default: " MODEL_NAME_STRING ")\n"
+		VERSION "\n"
+		"See -t for license terms\n"
+		"Usage: [options]\n"
+		"  -b <ip>\tnetwork interface/IP address to bind to\n"
+		"  -a <port>[:<count>]\tset inbound port and range for RTP and HTTP\n"
+		"  -c <alac[|pcm>\taudio format send to player\n"
+		"  -r <96|160|320>\tset Spotify vorbis codec rate\n"
+		"  -x <config file>\tread config from file (default is ./config.xml)\n"
+		"  -i <config file>\tdiscover players, save <config file> and exit\n"
+		"  -I \t\t\tauto save config at every network scan\n"
+		"  -f <logfile>\t\twrite debug to logfile\n"
+		"  -p <pid file>\t\twrite PID in file\n"
+		"  -m <n1,n2...>\t\texclude devices whose model include tokens\n"
+		"  -n <m1,m2,...>\texclude devices whose name includes tokens\n"
+		"  -o <m1,m2,...>\tinclude only listed models; overrides -m and -n (use <NULL> if player don't return a model)\n"
+		"  -d <log>=<level>\tSet logging level, logs: all|main|util|upnp, level: error|warn|info|debug|sdebug\n"
+
 #if LINUX || FREEBSD || SUNOS
 		   "  -z \t\t\tDaemonize\n"
 #endif
@@ -193,13 +165,8 @@ static char usage[] =
 #if WINEVENT
 		   " WINEVENT"
 #endif
-#if LOOPBACK
-		   " LOOPBACK"
-#endif
-#if USE_SSL
-		   " SSL"
-#endif
-		   "\n\n";
+
+			"\n\n";
 static char license[] =
 		   "This program is free software: you can redistribute it and/or modify\n"
 		   "it under the terms of the GNU General Public License as published by\n"
@@ -223,379 +190,104 @@ static char license[] =
 /*----------------------------------------------------------------------------*/
 static bool AddRaopDevice(struct sMR *Device, mdnssd_service_t *s);
 static void DelRaopDevice(struct sMR *Device);
-static bool IsExcluded(char *Model);
+static bool IsExcluded(char *Model, char* Name);
+static void* GetArtworkThread(void* arg);
 
-#if BUSY_MODE
-static void BusyRaise(struct sMR *Device);
-static void BusyDrop(struct sMR *Device);
-#endif
+typedef struct {
+	struct sMR* Device;
+	char* Url, * ContentType, * Image;
+	int Size;
+} tArtworkFetch;
 
 /*----------------------------------------------------------------------------*/
-bool sq_callback(void *caller, sq_action_t action, ...)
-{
-	struct sMR *device = caller;
-	bool rc = true;
+struct raopcl_s* shadowRaop(struct shadowPlayer* shadow) {
+	struct sMR* Device = (struct sMR*)shadow;
+	return Device->Raop;
+}
 
-	pthread_mutex_lock(&device->Mutex);
-
-	if (!device->Running)	{
-		LOG_WARN("[%]: device has been removed", device);
-		pthread_mutex_unlock(&device->Mutex);
-		return false;
-	}
-
+/*----------------------------------------------------------------------------*/
+void shadowRequest(struct shadowPlayer* shadow, enum spotEvent event, ...) {
+	struct sMR* Device = (struct sMR*)shadow;
 	va_list args;
-	va_start(args, action);
+	va_start(args, event);
 
-	if (action == SQ_ONOFF) {
-		device->on = va_arg(args, int);
+	pthread_mutex_lock(&Device->Mutex);
 
-		if (device->on && device->Config.AutoPlay) {
-			// switching player back ON let us take over 
-			device->PlayerStatus = 0;
-			sq_notify(device->SqueezeHandle, SQ_PLAY, device->on);
+	switch (event) {
+	case SPOT_LOAD:
+		LOG_INFO("[%p]: spotify LOAD request", Device);
+		raopcl_connect(Device->Raop, Device->PlayerIP, Device->PlayerPort, true);
+		break;
+	case SPOT_PLAY:
+		LOG_INFO("[%p]: spotify play request", Device);
+		raopcl_connect(Device->Raop, Device->PlayerIP, Device->PlayerPort, true);
+		Device->SpotState = SPOT_PLAY;
+		break;
+	case SPOT_VOLUME: {
+		// discard echo commands
+		uint32_t now = gettime_ms();
+		if (now < Device->VolumeStampRx + 1000) break;
+
+		// Volume is normalized 0..1 and 0 is -144
+		Device->Muted = false;
+		Device->Volume = -30.0 * (1.0 - (double) va_arg(args, int) / UINT16_MAX);
+		raopcl_set_volume(Device->Raop, Device->Volume > -30.0 ? Device->Volume : -144);
+
+		LOG_INFO("[%p]: spotify volume request %lf", Device, Device->Volume);
+		break;
+	}
+	case SPOT_METADATA: {
+		if (!Device->Config.SendMetaData) break;
+	
+		metadata_t* MetaData = va_arg(args, metadata_t*);
+		
+		// send basic metadata now (works as long as we are flushed)
+		raopcl_set_daap(Device->Raop, 3, 
+			"minm", 's', MetaData->title,
+			"asar", 's', MetaData->artist,
+			"asal", 's', MetaData->album
+		);
+
+		// go fetch the artwork if any
+		if (MetaData->artwork && Device->Config.SendCoverArt) {
+			tArtworkFetch* Artwork = calloc(1, sizeof(tArtworkFetch));
+			Artwork->Url = strdup(MetaData->artwork);
+			Artwork->Device = Device;
+
+			pthread_t lambda;
+			pthread_create(&lambda, NULL, &GetArtworkThread, Artwork);
 		}
 
-		if (!device->on) {
-			// flush everything in queue
-			tRaopReq *Req = malloc(sizeof(tRaopReq));
-			strcpy(Req->Type, "OFF");
-			queue_flush(&device->Queue);
-			queue_insert(&device->Queue, Req);
-			pthread_cond_signal(&device->Cond);
-		}
-
-		LOG_DEBUG("[%p]: device set on/off %d", caller, device->on);
+		break;
+	}
+	default:
+		break;
 	}
 
-	if (!device->on && action != SQ_SETNAME && action != SQ_SETSERVER) {
-		LOG_DEBUG("[%p]: device off or not controlled by LMS", caller);
-		pthread_mutex_unlock(&device->Mutex);
-		va_end(args);
-		return false;
-	}
-
-	LOG_SDEBUG("callback for %s (%d)", device->FriendlyName, action);
-
-	switch (action) {
-		case SQ_FINISHED:
-			device->LastFlush = gettime_ms();
-			device->DiscWait = true;
-			device->TrackRunning = false;
-			break;
-		case SQ_STOP: {
-			tRaopReq *Req = malloc(sizeof(tRaopReq));
-
-			device->TrackRunning = false;
-			device->sqState = SQ_STOP;
-			// see note in raop_client.h why this 2-stages stop is needed
-			raopcl_stop(device->Raop);
-
-			strcpy(Req->Type, "FLUSH");
-			queue_insert(&device->Queue, Req);
-			pthread_cond_signal(&device->Cond);
-			break;
-		}
-		case SQ_PAUSE: {
-			tRaopReq *Req;
-
-			device->TrackRunning = false;
-			device->sqState = SQ_PAUSE;
-			// see note in raop_client.h why this 2-stages pause is needed
-			raopcl_pause(device->Raop);
-
-			Req = malloc(sizeof(tRaopReq));
-			strcpy(Req->Type, "FLUSH");
-			queue_insert(&device->Queue, Req);
-			pthread_cond_signal(&device->Cond);
-			break;
-		}
-		case SQ_UNPAUSE: {
-			tRaopReq *Req = malloc(sizeof(tRaopReq));
-
-			device->TrackRunning = true;
-			device->sqState = SQ_PLAY;
-			unsigned jiffies = va_arg(args, unsigned);
-			if (jiffies) 
-				raopcl_start_at(device->Raop, TIME_MS2NTP(jiffies) -
-								TS2NTP(raopcl_latency(device->Raop), raopcl_sample_rate(device->Raop)));
-			strcpy(Req->Type, "CONNECT");
-			queue_insert(&device->Queue, Req);
-			pthread_cond_signal(&device->Cond);
-			break;
-		}
-		case SQ_VOLUME: {
-			uint32_t Volume = LMSVolumeMap[va_arg(args, int)];
-			uint32_t now = gettime_ms();
-
-			if (device->Config.VolumeMode == VOLUME_HARD &&	now > device->VolumeStampRx + 1000 &&
-				(Volume || device->Config.MuteOnPause || sq_get_mode(device->SqueezeHandle) == device->sqState)) {
-				
-				device->Volume = Volume;
-				
-				tRaopReq *Req = malloc(sizeof(tRaopReq));
-				Req->Data.Volume = device->VolumeMapping[(unsigned)device->Volume];
-				strcpy(Req->Type, "VOLUME");
-				queue_insert(&device->Queue, Req);
-				pthread_cond_signal(&device->Cond);
-			} else {
-				LOG_INFO("[%p]: volume ignored %u", device, Volume);
-			}
-
-			break;
-		}
-		case SQ_CONNECT: {
-			tRaopReq *Req = malloc(sizeof(tRaopReq));
-
-			device->sqState = SQ_PLAY;
-
-			strcpy(Req->Type, "CONNECT");
-			queue_insert(&device->Queue, Req);
-			pthread_cond_signal(&device->Cond);
-
-			break;
-		}
-		case SQ_METASEND:
-			device->MetadataWait = 5;
-			break;
-		case SQ_STARTED:
-			device->TrackRunning = true;
-			device->MetadataWait = 2;
-			device->MetadataHash++;
-			break;
-		case SQ_SETNAME:
-			strcpy(device->sq_config.name, va_arg(args, char*));
-			break;
-		case SQ_SETSERVER:
-			strcpy(device->sq_config.dynamic.server, inet_ntoa(*va_arg(args, struct in_addr*)));
-			break;
-		default:
-			break;
-	}
-
-	pthread_mutex_unlock(&device->Mutex);
 	va_end(args);
-	return rc;
+	pthread_mutex_unlock(&Device->Mutex);
 }
 
 /*----------------------------------------------------------------------------*/
 static void* GetArtworkThread(void *arg) {
-	union sRaopReqData* Data = &((tRaopReq*) arg)->Data;
-	struct sMR* Device = Data->Artwork.Device;
+	tArtworkFetch* Artwork = (tArtworkFetch*)arg;
+	struct sMR* Device = Artwork->Device;
 
 	// try to get the image, might take a while
-	Data->Artwork.Size = http_fetch(Data->Artwork.Url, &Data->Artwork.ContentType, &Data->Artwork.Image);
+	Artwork->Size = http_fetch(Artwork->Url, &Artwork->ContentType, &Artwork->Image);
 	pthread_mutex_lock(&Device->Mutex);
 
-	// need to make sure we have artwork, that device is active and this si the right query
-	if (Data->Artwork.Size > 0 && Device->Running && Device->MetadataHash == Data->Artwork.Hash) {
-		queue_insert(&Device->Queue, arg);
-		pthread_cond_signal(&Device->Cond);
-	} else {
-		LOG_WARN("[%p]: Can't get artwork or device not active %s", Device, Data->Artwork.Url);
-		NFREE(Data->Artwork.ContentType);
-		NFREE(Data->Artwork.Image);
-		free(Data->Artwork.Url);
-		free(arg);
+	// only send if we are running (if flushed then nothing happens)
+	if (Artwork->Size > 0 && Device->Running) {
+		raopcl_set_artwork(Device->Raop, Artwork->ContentType, Artwork->Size, Artwork->Image);
 	}
+
+	NFREE(Artwork->ContentType);
+	NFREE(Artwork->Image);
+	free(Artwork->Url);
+	free(Artwork);
 
 	pthread_mutex_unlock(&Device->Mutex);
-	return NULL;
-}
-
-/*----------------------------------------------------------------------------*/
-static void* GetRequest(cross_queue_t* Queue, pthread_mutex_t* Mutex, pthread_cond_t* Cond, uint32_t timeout) {
-	pthread_mutex_lock(Mutex);
-
-	void* data = queue_extract(Queue);
-	if (!data) pthread_cond_reltimedwait(Cond, Mutex, timeout);
-
-	pthread_mutex_unlock(Mutex);
-	return data;
-}
-
-/*----------------------------------------------------------------------------*/
-static void *PlayerThread(void *args) {
-	struct sMR *Device = (struct sMR*) args;
-	uint32_t KeepAlive = 0, Last = 0;
-
-	Device->Running = true;
-
-	/*
-	There is probably a few unsafe thread conditions with the callback and the
-	the activethread, but nothing serious and locking the mutex during the whole
-	time would seriously block the callback, so it's not worth
-	*/
-
-	while (Device->Running) {
-		// context is valid until this thread ends, no deletion issue
-		tRaopReq *req = GetRequest(&Device->Queue, &Device->Mutex, &Device->Cond, 1000);
-		uint32_t now = gettime_ms();
-
-		// player is not ready to receive commands
-		if (Device->PlayerStatus & DMCP_PREVENT_PLAYBACK) {
-			pthread_mutex_lock(&Device->Mutex);
-
-			if (now > Last + 5000) {
-				LOG_WARN("[%p]: Player has been in 'PreventPlayback' for too long");
-				sq_notify(Device->SqueezeHandle, SQ_OFF);
-			} else if (req) {
-				queue_insert_first(&Device->Queue, req);
-			}
-
-			pthread_mutex_unlock(&Device->Mutex);
-			LOG_DEBUG("[%p]: PreventPlayback loop", Device);
-			usleep(50 * 1000);
-
-			continue;
-		}
-			
-		Last = now;
-
-		// empty means timeout every sec
-		if (!req) {
-			LOG_DEBUG("[%p]: tick %u", Device, now);
-
-			if (Device->DiscWait && (Device->LastFlush + (Device->Config.IdleTimeout * 1000) - now > 1000) ) {
-				LOG_INFO("[%p]: Disconnecting %u", Device, now);
-				raopcl_disconnect(Device->Raop);
-				Device->DiscWait = false;
-			}
-
-			Device->Sane = raopcl_is_sane(Device->Raop) ? 0 : Device->Sane + 1;
-			if (Device->Sane > 3) {
-				LOG_WARN("[%p]: broken connection: switching off player", Device);
-				pthread_mutex_lock(&Device->Mutex);
-				sq_notify(Device->SqueezeHandle, SQ_OFF);
-				pthread_mutex_unlock(&Device->Mutex);
-			}
-
-			// after that, only check what's needed when running
-			if (!Device->TrackRunning) continue;
-
-			// seems that HomePod requires regular RTSP exchange
-			if (!(KeepAlive++ & 0x0f)) raopcl_keepalive(Device->Raop);
-
-			pthread_mutex_lock(&Device->Mutex);
-
-			if (Device->MetadataWait && !--Device->MetadataWait && Device->Config.SendMetaData) {
-				metadata_t metadata;
-				uint32_t hash, Time;
-
-				pthread_mutex_unlock(&Device->Mutex);
-
-				// not a valid metadata, nothing to update
-				if (!sq_get_metadata(Device->SqueezeHandle, &metadata, false)) {
-					Device->MetadataWait = 5;
-					metadata_free(&metadata);
-					continue;
-				}
-
-				// set progress at every metadata check (for live streams)
-				Time = sq_get_time(Device->SqueezeHandle);
-				raopcl_set_progress_ms(Device->Raop, Time, metadata.duration);
-
-				hash = hash32(metadata.title) ^ hash32(metadata.artwork);
-
-				if (Device->MetadataHash != hash) {
-					raopcl_set_daap(Device->Raop, 5, "minm", 's', metadata.title,
-													 "asar", 's', metadata.artist,
-													 "asal", 's', metadata.album,
-													 "asgn", 's', metadata.genre,
-													 "astn", 'i', (int) metadata.track);
-
-					Device->MetadataHash = hash;
-
-					// only get coverart if title has changed
-					if (metadata.artwork && Device->Config.SendCoverArt) {
-						tRaopReq* Req = calloc(1, sizeof(tRaopReq));
-						strcpy(Req->Type, "ARTWORK");
-						Req->Data.Artwork.Url = strdup(metadata.artwork);
-						Req->Data.Artwork.Device = Device;
-						Req->Data.Artwork.Hash = hash;
-
-						pthread_t lambda;
-						pthread_create(&lambda, NULL, &GetArtworkThread, Req);
-					}
-
-					/*
-					Set refresh rate to 5 sec for true live streams and song
-					duration + 5s for others that might be either live but with
-					real duration from plugin helpers or streaming services
-					*/
-					if (metadata.remote) {
-						Device->MetadataWait = 5;
-						if (metadata.duration) {
-							Device->MetadataWait += (metadata.duration - Time) / 1000;
-						}
-					}
-
-					LOG_INFO("[%p]: idx %d\n\tartist:%s\n\talbum:%s\n\ttitle:%s\n"
-								"\tgenre:%s\n\tduration:%d.%03d\n\tsize:%d\n\tcover:%s",
-								 Device, metadata.index, metadata.artist,
-								 metadata.album, metadata.title, metadata.genre,
-								 div(metadata.duration, 1000).quot,
-								 div(metadata.duration,1000).rem, metadata.size,
-								 metadata.artwork ? metadata.artwork : "");
-
-
-				} else Device->MetadataWait = 5;
-
-				metadata_free(&metadata);
-				LOG_DEBUG("[%p]: next metadata update %u", Device, Device->MetadataWait);
-
-			} else pthread_mutex_unlock(&Device->Mutex);
-
-			continue;
-		}
-
-		if (!strcasecmp(req->Type, "CONNECT")) {
-			LOG_INFO("[%p]: raop connecting ...", Device);
-			if (raopcl_connect(Device->Raop, Device->PlayerIP, Device->PlayerPort, Device->Config.Volume != -1)) {
-				Device->DiscWait = false;
-				LOG_INFO("[%p]: raop connected", Device);
-			} else {
-				LOG_ERROR("[%p]: raop failed to connect", Device);
-			}
-		}
-
-		if (!strcasecmp(req->Type, "FLUSH")) {
-			LOG_INFO("[%p]: flushing ...", Device);
-			Device->LastFlush = gettime_ms();
-			Device->DiscWait = true;
-			raopcl_flush(Device->Raop);
-		}
-
-		if (!strcasecmp(req->Type, "OFF")) {
-			LOG_INFO("[%p]: processing off", Device);
-			raopcl_disconnect(Device->Raop);
-			raopcl_sanitize(Device->Raop);
-		}
-
-		if (!strcasecmp(req->Type, "VOLUME")) {
-			LOG_INFO("[%p]: processing volume device:%d request:%.2f", Device, Device->Volume, req->Data.Volume);
-			raopcl_set_volume(Device->Raop, req->Data.Volume);
-		}
-
-		if (!strcasecmp(req->Type, "ARTWORK")) {
-			union sRaopReqData* Data = &((tRaopReq*)req)->Data;
-			LOG_INFO("[%p]: Got artwork for %s", Device, Data->Artwork.Url);
-
-			// need to make sure this is *really* for us
-			if (Device->MetadataHash == Data->Artwork.Hash) {
-				raopcl_set_artwork(Device->Raop, Data->Artwork.ContentType, Data->Artwork.Size, Data->Artwork.Image);
-			} else {
-				LOG_WARN("[%p]: Wrong artwork", Device);
-			}
-
-			NFREE(Data->Artwork.ContentType);
-			NFREE(Data->Artwork.Image);
-			free(Data->Artwork.Url);
-		}
-
-		free(req);
-	}
-
 	return NULL;
 }
 
@@ -619,7 +311,7 @@ bool mDNSsearchCallback(mdnssd_service_t *slist, void *cookie, bool *stop) {
 
 	for (s = slist; s && glMainRunning; s = s->next) {
 		char *am = GetmDNSAttribute(s->attr, s->attr_count, "am");
-		bool excluded = am ? IsExcluded(am) : false;
+		bool excluded = am ? IsExcluded(am, s->name) : false;
 		NFREE(am);
 
 		// ignore excluded and announces made on behalf
@@ -632,7 +324,7 @@ bool mDNSsearchCallback(mdnssd_service_t *slist, void *cookie, bool *stop) {
 			if (s->expired) {
 				if (!raopcl_is_connected(Device->Raop) && !Device->Config.RemoveTimeout) {
 					LOG_INFO("[%p]: removing renderer (%s)", Device, Device->FriendlyName);
-					if (Device->SqueezeHandle) sq_delete_device(Device->SqueezeHandle);
+					spotDeletePlayer(Device->SpotPlayer);
 					DelRaopDevice(Device);
 				} else {
 					LOG_INFO("[%p]: keep missing renderer (%s)", Device, Device->FriendlyName);
@@ -675,17 +367,12 @@ bool mDNSsearchCallback(mdnssd_service_t *slist, void *cookie, bool *stop) {
 		}
 
 		if (AddRaopDevice(Device, s) && !glDiscovery) {
-			// create a new slimdevice
-			Device->sq_config.soft_volume = (Device->Config.VolumeMode == VOLUME_SOFT);
-			Device->SqueezeHandle = sq_reserve_device(Device, &sq_callback);
-			if (!*(Device->sq_config.name)) strcpy(Device->sq_config.name, Device->FriendlyName);
-			if (!Device->SqueezeHandle || !sq_run_device(Device->SqueezeHandle,
-														 Device->Raop, &Device->sq_config)) {
-				sq_release_device(Device->SqueezeHandle);
-				Device->SqueezeHandle = 0;
-				LOG_ERROR("[%p]: cannot create squeezelite instance (%s)", Device, Device->FriendlyName);
-				DelRaopDevice(Device);
-			}
+			// create a new spotify device
+			char id[6 * 2 + 1] = { 0 };
+			for (int i = 0; i < 6; i++) sprintf(id + i * 2, "%02x", Device->Config.MAC[i]);
+			if (!*(Device->Config.Name)) strcpy(Device->Config.Name, Device->FriendlyName);
+			Device->SpotPlayer = spotCreatePlayer(Device->Config.Name, id, glHost, Device->Config.VorbisRate, 
+												  FRAMES_PER_BLOCK, Device->Config.ReadAhead, (struct shadowPlayer*)Device);
 		}
 	}
 
@@ -695,7 +382,7 @@ bool mDNSsearchCallback(mdnssd_service_t *slist, void *cookie, bool *stop) {
 		if (!Device->Running || Device->Config.RemoveTimeout <= 0 || !Device->Expired || now < Device->Expired + Device->Config.RemoveTimeout*1000) continue;
 
 		LOG_INFO("[%p]: removing renderer (%s) on timeout", Device, Device->FriendlyName);
-		if (Device->SqueezeHandle) sq_delete_device(Device->SqueezeHandle);
+		//if (Device->SqueezeHandle) sq_delete_device(Device->SqueezeHandle);
 		DelRaopDevice(Device);
 	}
 
@@ -751,43 +438,6 @@ static void *MainThread(void *args) {
 }
 
 /*----------------------------------------------------------------------------*/
-void SetVolumeMapping(struct sMR *Device) {
-	char *p;
-	int i = 1;
-	float a1 = 1, b1 = -30, a2 = 0, b2 = 0;
-	Device->VolumeMapping[0] = -144.0;
-	p = Device->Config.VolumeMapping;
-	do {
-		if (!p || !sscanf(p, "%f:%f", &b2, &a2)) {
-			LOG_ERROR("[%p]: wrong volume mapping table", Device, p);
-			break;
-		}
-		p = strchr(p, ',');
-		if (p) p++;
-
-		while (i <= a2) {
-			Device->VolumeMapping[i] = (a1 == a2) ? b1 :
-									   i*(b1-b2)/(a1-a2) + b1 - a1*(b1-b2)/(a1-a2);
-			i++;
-		}
-		a1 = a2;
-		b1 = b2;
-	} while (i <= 100);
-	for (; i <= 100; i++) Device->VolumeMapping[i] = Device->VolumeMapping[i-1];
-}
-
-/*----------------------------------------------------------------------------*/
-static void RaopQueueFree(void* item) {
-	tRaopReq* p = item;
-	if (strcasestr(p->Type, "ARTWORK")) {
-		NFREE(p->Data.Artwork.ContentType);
-		NFREE(p->Data.Artwork.Image);
-		free(p->Data.Artwork.Url);
-	}
-	free(p);
-}
-
-/*----------------------------------------------------------------------------*/
 static bool AddRaopDevice(struct sMR *Device, mdnssd_service_t *s) {
 	pthread_attr_t pattr;
 	raop_crypto_t Crypto;
@@ -796,13 +446,12 @@ static bool AddRaopDevice(struct sMR *Device, mdnssd_service_t *s) {
 	char Secret[STR_LEN] = "";
 	// read parameters from default then config file
 	memcpy(&Device->Config, &glMRConfig, sizeof(tMRConfig));
-	memcpy(&Device->sq_config, &glDeviceParam, sizeof(sq_dev_param_t));
-	LoadMRConfig(glConfigID, s->name, &Device->Config, &Device->sq_config);
+	LoadMRConfig(glConfigID, s->name, &Device->Config);
 
 	if (!Device->Config.Enabled) return false;
 
 	if (strcasestr(s->name, "AirSonos")) {
-		LOG_DEBUG("[%p]: skipping AirSonos player (please use uPnPBridge)", Device);
+		LOG_DEBUG("[%p]: skipping AirSonos player", Device);
 		return false;
 	}
 
@@ -825,31 +474,20 @@ static bool AddRaopDevice(struct sMR *Device, mdnssd_service_t *s) {
 	}
 
 	Device->Magic 			= MAGIC;
-	Device->on 				= false;
-	Device->SqueezeHandle 	= 0;
 	Device->Running 		= true;
 	// make sure that 1st volume is not missed
 	Device->VolumeStampRx 	= gettime_ms() - 2000;
 	Device->PlayerIP 		= s->addr;
 	Device->PlayerPort 		= s->port;
 	Device->PlayerStatus	= 0;
-	Device->DiscWait 		= false;
-	Device->TrackRunning 	= false;
-	Device->Volume 			= Device->Config.Volume;
+	Device->Volume			= -30.0;
 	Device->SkipStart 		= 0;
 	Device->SkipDir 		= false;
-	Device->ContentType[0] 	= '\0';
-	Device->sqState 		= SQ_STOP;
+	Device->SpotPlayer		= NULL;
 	Device->Raop 			= NULL;
-	Device->LastFlush 		= 0;
 	Device->Expired			= 0;
-	Device->Sane 			= true;
-	Device->MetadataWait 	= Device->MetadataHash = 0;
-	Device->Busy			= 0;
-	Device->Delete			= 0;
-
+	
 	memset(Device->ActiveRemote, 0, 16);
-	SetVolumeMapping(Device);
 
 	strcpy(Device->UDN, s->name);
 	sprintf(Device->ActiveRemote, "%u", hash32(Device->UDN));
@@ -858,69 +496,64 @@ static bool AddRaopDevice(struct sMR *Device, mdnssd_service_t *s) {
 	p = strcasestr(Device->FriendlyName, ".local");
 	if (p) *p = '\0';
 
-	if (!memcmp(Device->sq_config.mac, "\0\0\0\0\0\0", 6)) {
+	if (!memcmp(Device->Config.MAC, "\0\0\0\0\0\0", 6)) {
 		uint32_t mac_size = 6;
-		if (SendARP(s->addr.s_addr, INADDR_ANY, Device->sq_config.mac, &mac_size)) {
-			*(uint32_t*)(Device->sq_config.mac + 2) = hash32(Device->UDN);
+		if (SendARP(s->addr.s_addr, INADDR_ANY, Device->Config.MAC, &mac_size)) {
+			*(uint32_t*)(Device->Config.MAC + 2) = hash32(Device->UDN);
 			LOG_INFO("[%p]: creating MAC", Device);
 		}
-		memset(Device->sq_config.mac, 0xaa, 2);
+		memset(Device->Config.MAC, 0xaa, 2);
 	}
 
 	// virtual players duplicate mac address
 	for (int i = 0; i < MAX_RENDERERS; i++) {
-		if (glMRDevices[i].Running && Device != glMRDevices + i && !memcmp(glMRDevices[i].sq_config.mac, Device->sq_config.mac, 6)) {
-			memset(Device->sq_config.mac, 0xaa, 2);
-			*(uint32_t*)(Device->sq_config.mac + 2) = hash32(Device->UDN);
+		if (glMRDevices[i].Running && Device != glMRDevices + i && !memcmp(glMRDevices[i].Config.MAC, Device->Config.MAC, 6)) {
+			memset(Device->Config.MAC, 0xaa, 2);
+			*(uint32_t*)(Device->Config.MAC + 2) = hash32(Device->UDN);
 			LOG_INFO("[%p]: duplicated mac ... updating", Device);
 		}
 	}
 
 	LOG_INFO("[%p]: adding renderer (%s@%s) with mac %hX-%X", Device, Device->FriendlyName, inet_ntoa(Device->PlayerIP),  
-	         *(uint16_t*)Device->sq_config.mac, *(uint32_t*)(Device->sq_config.mac + 2));
+	         *(uint16_t*)Device->Config.MAC, *(uint32_t*)(Device->Config.MAC + 2));
 
-	// gather RAOP device capabilities, to be matched mater
-	Device->SampleSize = GetmDNSAttribute(s->attr, s->attr_count, "ss");
-	Device->SampleRate = GetmDNSAttribute(s->attr, s->attr_count, "sr");
-	Device->Channels = GetmDNSAttribute(s->attr, s->attr_count, "ch");
-	Device->Codecs = GetmDNSAttribute(s->attr, s->attr_count, "cn");
-	Device->Crypto = GetmDNSAttribute(s->attr, s->attr_count, "et");
+	// gather RAOP device capabilities, to be matched later
+	char *SampleSize = GetmDNSAttribute(s->attr, s->attr_count, "ss");
+	char *SampleRate = GetmDNSAttribute(s->attr, s->attr_count, "sr");
+	char *Channels = GetmDNSAttribute(s->attr, s->attr_count, "ch");
+	char *Codecs = GetmDNSAttribute(s->attr, s->attr_count, "cn");
+	char *Cipher = GetmDNSAttribute(s->attr, s->attr_count, "et");
 
-	if (!Device->Codecs || !strchr(Device->Codecs, '1')) {
-		LOG_WARN("[%p]: ALAC not in codecs, player might not work %s", Device, Device->Codecs);
+	if (!Codecs || !strchr(Codecs, '1')) {
+		LOG_WARN("[%p]: ALAC not in codecs, player might not work %s", Device, Codecs);
 	}
 
-	if ((Device->Config.Encryption || Auth) && strchr(Device->Crypto, '1'))	Crypto = RAOP_RSA;
+	if ((Device->Config.Encryption || Auth) && strchr(Cipher, '1'))	Crypto = RAOP_RSA;
 	else Crypto = RAOP_CLEAR;
 
 	Device->Raop = raopcl_create(glHost, glPortBase, glPortRange,
 								 glDACPid, Device->ActiveRemote,
 								 Device->Config.AlacEncode ? RAOP_ALAC : RAOP_ALAC_RAW , FRAMES_PER_BLOCK,
-								 (uint32_t) MS2TS(Device->Config.ReadAhead, Device->SampleRate ? atoi(Device->SampleRate) : 44100),
-								 Crypto, Auth, Secret, Device->Crypto, md,
-								 Device->SampleRate ? atoi(Device->SampleRate) : 44100,
-								 Device->SampleSize ? atoi(Device->SampleSize) : 16,
-								 Device->Channels ? atoi(Device->Channels) : 2,
-								 Device->Volume > 0 ? Device->VolumeMapping[(unsigned) Device->Volume] : -144.0);
+								 (uint32_t) MS2TS(Device->Config.ReadAhead, SampleRate ? atoi(SampleRate) : 44100),
+								 Crypto, Auth, Secret, Cipher, md,
+								 SampleRate ? atoi(SampleRate) : 44100,
+								 SampleSize ? atoi(SampleSize) : 16,
+								 Channels ? atoi(Channels) : 2,
+								 Device->Volume);
 
 	NFREE(am);
 	NFREE(md);
 	NFREE(pk);
+	NFREE(SampleSize);
+	NFREE(SampleRate);
+	NFREE(Channels);
+	NFREE(Codecs);
+	NFREE(Cipher);
 
 	if (!Device->Raop) {
 		LOG_ERROR("[%p]: cannot create raop device", Device);
-		NFREE(Device->SampleSize);
-		NFREE(Device->SampleRate);
-		NFREE(Device->Channels);
-		NFREE(Device->Codecs);
-		NFREE(Device->Crypto);
 		return false;
 	}
-
-	pthread_attr_init(&pattr);
-	pthread_attr_setstacksize(&pattr, PTHREAD_STACK_MIN + 64*1024);
-	pthread_create(&Device->Thread, NULL, &PlayerThread, Device);
-	pthread_attr_destroy(&pattr);
 
 	return true;
 }
@@ -937,19 +570,11 @@ void FlushRaopDevices(void) {
 void DelRaopDevice(struct sMR *Device) {
 	pthread_mutex_lock(&Device->Mutex);
 	Device->Running = false;
-	pthread_cond_signal(&Device->Cond);
 	pthread_mutex_unlock(&Device->Mutex);
 	pthread_join(Device->Thread, NULL);
 	raopcl_destroy(Device->Raop);
-	queue_flush(&Device->Queue);
 
 	LOG_INFO("[%p]: Raop device stopped", Device);
-
-	NFREE(Device->SampleSize);
-	NFREE(Device->SampleRate);
-	NFREE(Device->Channels);
-	NFREE(Device->Codecs);
-	NFREE(Device->Crypto);
 }
 
 /*----------------------------------------------------------------------------*/
@@ -1031,24 +656,31 @@ static void *ActiveRemoteThread(void *args) {
 
 		LOG_INFO("[%p]: remote command %s", Device, command);
 
-		if (!strcasecmp(command, "pause")) sq_notify(Device->SqueezeHandle, SQ_PAUSE);
-		if (!strcasecmp(command, "play")) sq_notify(Device->SqueezeHandle, SQ_PLAY);
-		if (!strcasecmp(command, "playpause")) sq_notify(Device->SqueezeHandle, SQ_PLAY_PAUSE);
-		if (!strcasecmp(command, "stop")) sq_notify(Device->SqueezeHandle, SQ_STOP);
-		if (!strcasecmp(command, "mutetoggle")) sq_notify(Device->SqueezeHandle, SQ_MUTE_TOGGLE);
-		if (!strcasecmp(command, "nextitem")) sq_notify(Device->SqueezeHandle, SQ_NEXT);
-		if (!strcasecmp(command, "previtem")) sq_notify(Device->SqueezeHandle, SQ_PREVIOUS);
-		if (!strcasecmp(command, "volumeup")) sq_notify(Device->SqueezeHandle, SQ_VOLUME, "up");
-		if (!strcasecmp(command, "volumedown")) sq_notify(Device->SqueezeHandle, SQ_VOLUME, "down");
-		if (!strcasecmp(command, "shuffle_songs")) sq_notify(Device->SqueezeHandle, SQ_SHUFFLE);
-		if (!strcasecmp(command, "beginff") || !strcasecmp(command, "beginrew")) {
-			Device->SkipStart = gettime_ms();
-			Device->SkipDir = !strcasecmp(command, "beginff") ? true : false;
-		}
-		if (!strcasecmp(command, "playresume")) {
-			int32_t gap = gettime_ms() - Device->SkipStart;
-			gap = (gap + 3) * (gap + 3) * (Device->SkipDir ? 1 : -1);
-			sq_notify(Device->SqueezeHandle, SQ_FF_REW, gap);
+		if (!strcasecmp(command, "pause")) spotNotify(Device->SpotPlayer, SHADOW_PAUSE);
+		else if (!strcasecmp(command, "play")) spotNotify(Device->SpotPlayer, SHADOW_PLAY);
+		else if (!strcasecmp(command, "playpause")) spotNotify(Device->SpotPlayer, SHADOW_PLAY_TOGGLE);
+		else if (!strcasecmp(command, "stop")) spotNotify(Device->SpotPlayer, SHADOW_STOP);
+		else if (!strcasecmp(command, "nextitem")) spotNotify(Device->SpotPlayer, SHADOW_NEXT);
+		else if (!strcasecmp(command, "previtem")) spotNotify(Device->SpotPlayer, SHADOW_PREV);
+		else if (!strcasecmp(command, "mutetoggle")) {
+			Device->Muted = !Device->Muted;
+			if (Device->Muted) {
+				raopcl_set_volume(Device->Raop, -144.0);
+				spotNotify(Device->SpotPlayer, SHADOW_VOLUME, 0);
+			} else {
+				raopcl_set_volume(Device->Raop, Device->Volume > -30 ? Device->Volume : -144);
+				spotNotify(Device->SpotPlayer, SHADOW_VOLUME, (int)((30.0 + Device->Volume) / 30.0 * UINT16_MAX));
+			}
+		} else if (!strcasecmp(command, "volumeup")) {
+			Device->Volume += 30.0 / 20.0;
+			if (Device->Volume > 0) Device->Volume = 0;
+			raopcl_set_volume(Device->Raop, Device->Volume);
+			spotNotify(Device->SpotPlayer, SHADOW_VOLUME, (int)((30.0 + Device->Volume) / 30.0 * UINT16_MAX));
+		} else if (!strcasecmp(command, "volumedown")) {
+			Device->Volume -= 30.0 / 20.0;
+			if (Device->Volume < -30.0) Device->Volume = -30.0;
+			raopcl_set_volume(Device->Raop, Device->Volume > -30 ? Device->Volume : -144);
+			spotNotify(Device->SpotPlayer, SHADOW_VOLUME, (int)((30.0 + Device->Volume) / 30.0 * UINT16_MAX));
 		}
 
 		// handle DMCP commands
@@ -1062,7 +694,7 @@ static void *ActiveRemoteThread(void *args) {
 			} else if (strcasestr(command, "device-busy=1")) {
 				Device->PlayerStatus |= DMCP_BUSY;
 				if (Device->PlayerStatus & DMCP_PREVENT_PLAYBACK) {
-					sq_notify(Device->SqueezeHandle, SQ_OFF);
+					//sq_notify(Device->SqueezeHandle, SQ_OFF);
 				}
 			} else if (strcasestr(command, "device-busy=0")) {
 				Device->PlayerStatus &= ~DMCP_BUSY;
@@ -1074,30 +706,20 @@ static void *ActiveRemoteThread(void *args) {
 			 */
 			if ((strcasestr(command, "device-volume=") || strcasestr(command, ".volume=")) &&
 				Device->Config.VolumeMode != VOLUME_SOFT && Device->Config.VolumeFeedback) {
-				float volume;
-				int i;
+				double volume;
 				uint32_t now = gettime_ms();
 
-				sscanf(command, "%*[^=]=%f", &volume);
-				if (strcasestr(command, ".volume=")) i = (int) volume;
-				else for (i = 0; i < 100 && volume > Device->VolumeMapping[i]; i++);
-				volume = Device->VolumeMapping[i];
+				sscanf(command, "%*[^=]=%lf", &volume);
+				if (strcasestr(command, ".volume=")) volume = -30.0 * (1.0 - volume / 100);
 
-				LOG_INFO("[%p]: volume feedback %u (%.2f)", Device, i, volume);
+				LOG_INFO("[%p]: volume feedback %u (%.2lf)", Device, i, volume);
 
-				if (i != Device->Volume) {
-					// in case of change, notify LMS (but we should ignore command)
-					char vol[10];
-					sprintf(vol, "%d", i);
+				if (volume != Device->Volume || Device->Muted) {
 					Device->VolumeStampRx = now;
-					sq_notify(Device->SqueezeHandle, SQ_VOLUME, vol);
-
-					// some players expect controller to update volume, it's a request not a notification	
-					tRaopReq* Req = malloc(sizeof(tRaopReq));
-					Req->Data.Volume = volume;
-					strcpy(Req->Type, "VOLUME");
-					queue_insert(&Device->Queue, Req);
-					pthread_cond_signal(&Device->Cond);
+					Device->Volume = volume;
+					Device->Muted = false;
+					spotNotify(Device->SpotPlayer, SHADOW_VOLUME, (int) ((30.0 + volume) / 30.0 * UINT16_MAX));
+					raopcl_set_volume(Device->Raop, volume > -30 ? volume : -144);
 				} 
 			}
 		}
@@ -1176,20 +798,6 @@ void StartActiveRemote(struct in_addr host) {
 	pthread_create(&glActiveRemoteThread, NULL, ActiveRemoteThread, NULL);
 }
 
-/*/
-void getNetMask(int sock, char* iface) {
-	struct ifreq ifr;
-
-	memset(&ifr, 0, sizeof(ifr));
-	strncpy(ifr.ifr_name, iface, IF_NAMESIZE);
-
-	if ((ioctl(rsock, SIOCGIFNETMASK, &ifr)) == -1) {
-		perror("ioctl():");
-		return -1;
-	}
-}
-*/
-
 /*----------------------------------------------------------------------------*/
 void StopActiveRemote(void) {
 	if (glActiveRemoteSock != -1) {
@@ -1214,35 +822,43 @@ void StopActiveRemote(void) {
 }
 
 /*----------------------------------------------------------------------------*/
-static bool IsExcluded(char *Model) {
+bool IsExcluded(char* Model, char* Name) {
 	char item[STR_LEN];
-	char *p = glExcluded;
-	do {
-		sscanf(p, "%[^,]", item);
-		if (strcasestr(Model, item)) return true;
-		p += strlen(item);
-	} while (*p++);
+	char* p = glExcludedModels;
+	char* q = glExcludedNames;
+	char* o = glIncludedNames;
+
+	if (glIncludedNames) {
+		if (!Name) {
+			if (strcasestr(glIncludedNames, "<NULL>")) return false;
+			else return true;
+		}
+		do {
+			sscanf(o, "%[^,]", item);
+			if (!strcmp(Name, item)) return false;
+			o += strlen(item);
+		} while (*o++);
+		return true;
+	}
+
+	if (glExcludedModels && Model) {
+		do {
+			sscanf(p, "%[^,]", item);
+			if (strcasestr(Model, item)) return true;
+			p += strlen(item);
+		} while (*p++);
+	}
+
+	if (glExcludedNames && Name) {
+		do {
+			sscanf(q, "%[^,]", item);
+			if (strcasestr(Name, item)) return true;
+			q += strlen(item);
+		} while (*q++);
+	}
+
 	return false;
 }
-
-#if BUSY_MODE
-/*----------------------------------------------------------------------------*/
-void BusyRaise(struct sMR *Device) {
-	LOG_DEBUG("[%p]: busy raise %u", Device, Device->Busy);
-	Device->Busy++;
-	pthread_mutex_unlock(&Device->Mutex);
-}
-
-/*----------------------------------------------------------------------------*/
-void BusyDrop(struct sMR *Device) {
-	pthread_mutex_lock(&Device->Mutex);
-	Device->Busy--;
-	if (!Device->Busy && Device->Delete) pthread_cond_signal(&Device->Cond);
-	LOG_DEBUG("[%p]: busy drop %u", Device, Device->Busy);
-	pthread_mutex_unlock(&Device->Mutex);
-}
-
-#endif
 
 /*----------------------------------------------------------------------------*/
 static bool Start(void) {
@@ -1268,11 +884,10 @@ static bool Start(void) {
 
     for (i = 0; i < MAX_RENDERERS;  i++) {
 		pthread_mutex_init(&glMRDevices[i].Mutex, 0);
-		pthread_cond_init(&glMRDevices[i].Cond, 0);
-		queue_init(&glMRDevices[i].Queue, false, RaopQueueFree);
 	}
 
-	sq_init(glHost, glModelName);
+	// start cspot
+	spotOpen(glPortBase, glPortRange);
 
 	LOG_INFO("Binding to %s", inet_ntoa(glHost));
 
@@ -1303,6 +918,9 @@ static bool Stop(void) {
 	mdnssd_close(glmDNSsearchHandle);
 	pthread_join(glmDNSsearchThread, NULL);
 
+	// can now finish all cspot instances
+	spotClose();
+
 	LOG_DEBUG("flush renderers ...", NULL);
 	FlushRaopDevices();
 
@@ -1318,7 +936,6 @@ static bool Stop(void) {
 
 	for (int i = 0; i < MAX_RENDERERS;  i++) {
 		pthread_mutex_destroy(&glMRDevices[i].Mutex);
-		pthread_cond_destroy(&glMRDevices[i].Cond);
 	}
 
 	if (glConfigID) ixmlDocument_free(glConfigID);
@@ -1343,7 +960,7 @@ static void sighandler(int signum) {
 		LOG_INFO("forced exit", NULL);
 		exit(EXIT_SUCCESS);
 	}
-	sq_end();
+	//sq_end();
 	Stop();
 	exit(EXIT_SUCCESS);
 }
@@ -1359,7 +976,7 @@ bool ParseArgs(int argc, char **argv) {
 	}
 	while (optind < argc && strlen(argv[optind]) >= 2 && argv[optind][0] == '-') {
 		char *opt = argv[optind] + 1;
-		if (strstr("astxdfpibmM", opt) && optind < argc - 1) {
+		if (strstr("abcrxifpmnod", opt) && optind < argc - 1) {
 			optarg = argv[optind + 1];
 			optind += 2;
 		} else if (strstr("tzZIk"
@@ -1375,30 +992,18 @@ bool ParseArgs(int argc, char **argv) {
 			return false;
 		}
 		switch (opt[0]) {
-		case 's':
-			strcpy(glDeviceParam.server, optarg);
-			break;
 		case 'a':
-			strcpy(glPortOpen, optarg);
-			break;
-		case 'M':
-			strcpy(glModelName, optarg);
+			sscanf(optarg, "%hu:%hu", &glPortBase, &glPortRange);
 			break;
 		case 'b':
 			strcpy(glInterface, optarg);
 			break;
-#if defined(RESAMPLE)
-		case 'u':
-		case 'R':
-			if (optind < argc && argv[optind] && argv[optind][0] != '-') {
-				strcpy(glDeviceParam.resample_options, argv[optind++]);
-				glDeviceParam.resample = true;
-			} else {
-				strcpy(glDeviceParam.resample_options, "");
-				glDeviceParam.resample = false;
-			}
+		case 'c':
+			if (!strcasecmp(optarg, "alac")) glMRConfig.AlacEncode = false;
 			break;
-#endif
+		case 'r':
+			glMRConfig.VorbisRate = atoi(optarg);
+			break;
 		case 'f':
 			glLogFile = optarg;
 			break;
@@ -1419,7 +1024,13 @@ bool ParseArgs(int argc, char **argv) {
 			glGracefullShutdown = false;
 			break;
 		case 'm':
-			strcpy(glExcluded, optarg);
+			strcpy(glExcludedModels, optarg);
+			break;
+		case 'n':
+			strcpy(glExcludedNames, optarg);
+			break;
+		case 'o':
+			strcpy(glIncludedNames, optarg);
 			break;
 #if LINUX || FREEBSD || SUNOS
 		case 'z':
@@ -1489,20 +1100,14 @@ int main(int argc, char *argv[])
 			strcpy(glConfigName, argv[i+1]);
 		}
 	}
+
 	// load config from xml file
-	glConfigID = (void*) LoadConfig(glConfigName, &glMRConfig, &glDeviceParam);
-	// do some parameters migration
-	if (!glMigration || glMigration == 1 || glMigration == 2) {
-		glMigration = 3;
-		if (!strcasestr(glDeviceParam.codecs, "ogg")) strcat(glDeviceParam.codecs, ",ogg");
-		SaveConfig(glConfigName, glConfigID, CONFIG_MIGRATE);
-	}
+	glConfigID = (void*) LoadConfig(glConfigName, &glMRConfig);
 
 	// potentially overwrite with some cmdline parameters
 	if (!ParseArgs(argc, argv)) exit(1);
 
 	// make sure port range is correct
-	sscanf(glPortOpen, "%hu:%hu", &glPortBase, &glPortRange);
 	if (glPortBase && !glPortRange) glPortRange = MAX_RENDERERS*4;
 
 	if (glLogFile) {
@@ -1511,7 +1116,7 @@ int main(int argc, char *argv[])
 		}
 	}
 
-	LOG_ERROR("Starting squeeze2raop version: %s\n", VERSION);
+	LOG_ERROR("Starting spotraop version: %s\n", VERSION);
 
 	if (strtod("0.30", NULL) != 0.30) {
 		LOG_WARN("weird GLIBC, try -static build in case of failure");
@@ -1596,22 +1201,17 @@ int main(int argc, char *argv[])
 
 				if (!Locked) pthread_mutex_unlock(&p->Mutex);
 				if (!p->Running && !all) continue;
-				printf("%20.20s [r:%u] [l:%u] [sq:%u] [%s:%u] [mw:%u] [f:%u] [%p::%p]\n",
-						p->FriendlyName, p->Running, Locked, p->sqState,
-						inet_ntoa(p->PlayerIP), p->PlayerPort, p->MetadataWait,
-						(now - p->LastFlush)/1000,
-						p, sq_get_ptr(p->SqueezeHandle));
+				printf("%20.20s [r:%u] [l:%u] [sq:%u] [%s:%u]\n",
+						p->FriendlyName, p->Running, Locked, /*p->sqState*/ 0,
+						inet_ntoa(p->PlayerIP), p->PlayerPort);
 			}
 		}
 	}
 
-	LOG_INFO("stopping squeezelite devices ...", NULL);
-	sq_end();
+	LOG_INFO("stopping cspot devices ...", NULL);
+	//sq_end();
 	LOG_INFO("stopping Raop devices ...", NULL);
 	Stop();
 	LOG_INFO("all done", NULL);
 	return true;
 }
-
-
-

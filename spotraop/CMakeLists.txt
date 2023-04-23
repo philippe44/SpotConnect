@@ -40,12 +40,6 @@ endif()
 set(BASE ${CMAKE_CURRENT_SOURCE_DIR}/..)
 project(${PROJECT})
 
-# get_cmake_property(_variableNames VARIABLES)
-# list (SORT _variableNames)
-# foreach (_variableName ${_variableNames})
-    # message(STATUS "${_variableName}=${${_variableName}}")
-# endforeach()
-
 message(STATUS "Base directory is ${BASE}")
 message(STATUS "Using CC ${CMAKE_C_COMPILER} and ${CMAKE_CXX_COMPILER}")
 message(STATUS "Building for ${HOST}-${PLATFORM} with cmake's definition ${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}")
@@ -71,22 +65,28 @@ set(BELL_DISABLE_MQTT ON)
 
 # CMake options
 set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_C_STANDARD 11)
 
 if(MSVC)
-	add_compile_definitions(NOMINMAX _WINSOCK_DEPRECATED_NO_WARNINGS _CRT_SECURE_NO_WARNINGS _CRT_NONSTDC_NO_DEPRECATE)
+	add_compile_definitions(_WINSOCK_DEPRECATED_NO_WARNINGS _CRT_SECURE_NO_WARNINGS _CRT_NONSTDC_NO_DEPRECATE)
 	add_definitions(/wd4068 /wd4244 /wd4018 /wd4101 /wd4102 /wd4142 /wd4996 /wd4090)
 else()
 	add_compile_options(-O2 -fdata-sections -ffunction-sections)
 endif()
 
 # Main target sources
-file(GLOB SOURCES src/*.cpp src/*.c ${BASE}/common/crosstools/src/*.c )
-list(REMOVE_ITEM SOURCES ${BASE}/common/crosstools/src/cross_ssl.c)
-list(APPEND EXTRA_INCLUDES src ${BASE}/common)
+file(GLOB SOURCES src/*.cpp src/*.c ${BASE}/common/crosstools/src/*.c ${BASE}/spotraop/http-fetcher/src/*.c)
+list(APPEND EXTRA_INCLUDES src ${BASE}/common ${BASE}/spotraop/http-fetcher/include)
 add_executable(${PROJECT} ${SOURCES})
 
 # Other includes
 list(APPEND EXTRA_INCLUDES ../common/crosstools/src)
+
+# libpupnp
+target_include_directories(${PROJECT} PRIVATE ${BASE}/common/libpupnp/targets/${HOST}/${PLATFORM}/include/upnp)
+target_include_directories(${PROJECT} PRIVATE ${BASE}/common/libpupnp/targets/${HOST}/${PLATFORM}/include/ixml)
+target_include_directories(${PROJECT} PRIVATE ${BASE}/common/libpupnp/targets/${HOST}/${PLATFORM}/include/addons)
+list(APPEND EXTRA_LIBS ${BASE}/common/libpupnp/targets/${HOST}/${PLATFORM}/libpupnp.${LIB})
 
 # libraop
 target_include_directories(${PROJECT} PRIVATE ${BASE}/spotraop/libraop/targets/include)
@@ -126,17 +126,26 @@ target_include_directories(cspot PRIVATE ${BASE}/common/libcodecs/targets/includ
 
 # Configure the target
 if(NOT MSVC)
+        target_link_libraries(${PROJECT} PUBLIC dl)
 	if(NOT APPLE AND NOT CMAKE_SYSTEM_NAME STREQUAL "SunOS")
 		#target_link_options(${PROJECT} PUBLIC -static)
 	endif()
+	if(CMAKE_SYSTEM_NAME STREQUAL Linux AND (CMAKE_SYSTEM_PROCESSOR STREQUAL armv5 OR
+					 	 CMAKE_SYSTEM_PROCESSOR STREQUAL mips OR
+						 CMAKE_SYSTEM_PROCESSOR STREQUAL powerpc))
+		set(CMAKE_CXX_LINK_EXECUTABLE "${CMAKE_CXX_LINK_EXECUTABLE} -latomic")
+	endif()
+	if(CMAKE_SYSTEM_NAME STREQUAL SunOS)
+		set(CMAKE_CXX_LINK_EXECUTABLE "${CMAKE_CXX_LINK_EXECUTABLE} -lresolv")
+	endif()
 	if(CMAKE_SYSTEM_NAME STREQUAL Linux AND CMAKE_SYSTEM_PROCESSOR STREQUAL x86_64)
-		set(CMAKE_CXX_LINK_EXECUTABLE "${CMAKE_CXX_LINK_EXECUTABLE} -lmvec")
+		#set(CMAKE_CXX_LINK_EXECUTABLE "${CMAKE_CXX_LINK_EXECUTABLE} -lmvec")
 	endif()
 	if(CMAKE_SYSTEM_NAME STREQUAL SunOS)
 		set(CMAKE_CXX_LINK_EXECUTABLE "${CMAKE_CXX_LINK_EXECUTABLE} -lssp")
 	endif()
 endif()
 
-target_compile_definitions(${PROJECT} PRIVATE -D_GNU_SOURCE)
+target_compile_definitions(${PROJECT} PRIVATE -DUPNP_STATIC_LIB -D_GNU_SOURCE -DUSE_SSL)
 target_link_libraries(${PROJECT} PUBLIC cspot ${EXTRA_LIBS})
 target_include_directories(${PROJECT} PRIVATE "." ${EXTRA_INCLUDES})

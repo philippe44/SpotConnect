@@ -592,7 +592,6 @@ void CSpotPlayer::runTask() {
         }
     }
 
-    // TOOD: need to clean somethign here
     CSPOT_LOG(info, "Terminating player %s", name.c_str());
 }
 

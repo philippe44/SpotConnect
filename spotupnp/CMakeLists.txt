@@ -88,12 +88,11 @@ add_executable(${PROJECT} ${SOURCES})
 # Other includes
 list(APPEND EXTRA_INCLUDES ../common/crosstools/src)
 
-# UPnP
-target_include_directories(${PROJECT} PRIVATE ${BASE}/spotupnp/libpupnp/targets/${HOST}/${PLATFORM}/include/upnp)
-target_include_directories(${PROJECT} PRIVATE ${BASE}/spotupnp/libpupnp/targets/${HOST}/${PLATFORM}/include/ixml)
-target_include_directories(${PROJECT} PRIVATE ${BASE}/spotupnp/libpupnp/targets/${HOST}/${PLATFORM}/include/addons)
-#target_link_libraries(${PROJECT} PRIVATE ${BASE}/spotupnp/libpupnp/targets/${HOST}/${PLATFORM}/libpupnp.${LIB})
-list(APPEND EXTRA_LIBS ${BASE}/spotupnp/libpupnp/targets/${HOST}/${PLATFORM}/libpupnp.${LIB})
+# libpupnp
+target_include_directories(${PROJECT} PRIVATE ${BASE}/common/libpupnp/targets/${HOST}/${PLATFORM}/include/upnp)
+target_include_directories(${PROJECT} PRIVATE ${BASE}/common/libpupnp/targets/${HOST}/${PLATFORM}/include/ixml)
+target_include_directories(${PROJECT} PRIVATE ${BASE}/common/libpupnp/targets/${HOST}/${PLATFORM}/include/addons)
+list(APPEND EXTRA_LIBS ${BASE}/common/libpupnp/targets/${HOST}/${PLATFORM}/libpupnp.${LIB})
 
 # codecs with cmake
 find_package(libcodecs REQUIRED CONFIG PATHS ${BASE}/common/libcodecs)
@@ -124,7 +123,7 @@ if(NOT MSVC)
 		#target_link_options(${PROJECT} PUBLIC -static)
 	endif()
 	if(CMAKE_SYSTEM_NAME STREQUAL Linux AND CMAKE_SYSTEM_PROCESSOR STREQUAL x86_64)
-		set(CMAKE_CXX_LINK_EXECUTABLE "${CMAKE_CXX_LINK_EXECUTABLE} -lmvec")
+		#set(CMAKE_CXX_LINK_EXECUTABLE "${CMAKE_CXX_LINK_EXECUTABLE} -lmvec")
 	endif()
 	if(CMAKE_SYSTEM_NAME STREQUAL SunOS)
 		set(CMAKE_CXX_LINK_EXECUTABLE "${CMAKE_CXX_LINK_EXECUTABLE} -lssp")

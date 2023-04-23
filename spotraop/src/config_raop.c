@@ -1,5 +1,5 @@
 /*
- *  Squeeze2raop - Squeezelite to AirPlay bridge
+ *  SpotRaop - Spotify to AirPlay bridge
  *
  *  (c) Philippe, philippe_44@outlook.com
  *
@@ -12,7 +12,7 @@
 #include <stdlib.h>
 
 #include "ixmlextra.h"
-#include "squeeze2raop.h"
+#include "spotraop.h"
 #include "config_raop.h"
 #include "cross_log.h"
 
@@ -44,7 +44,7 @@ void SaveConfig(char *name, void *ref, int mode) {
 	IXML_Node	 *root, *common;
 	bool force = (mode == CONFIG_MIGRATE);
 
-	IXML_Element* old_root = ixmlDocument_getElementById(old_doc, "squeeze2raop");
+	IXML_Element* old_root = ixmlDocument_getElementById(old_doc, "spotraop");
 
 	if (mode != CONFIG_CREATE && old_doc) {
 		ixmlDocument_importNode(doc, (IXML_Node*) old_root, true, &root);
@@ -62,7 +62,7 @@ void SaveConfig(char *name, void *ref, int mode) {
 		common = (IXML_Node*) ixmlDocument_getElementById((IXML_Document*) root, "common");
 	}
 	else {
-		root = XMLAddNode(doc, NULL, "squeeze2raop", NULL);
+		root = XMLAddNode(doc, NULL, "spotraop", NULL);
 		common = (IXML_Node*) XMLAddNode(doc, root, "common", NULL);
 	}
 
@@ -79,36 +79,18 @@ void SaveConfig(char *name, void *ref, int mode) {
 		XMLUpdateNode(doc, root, force, "util_log",level2debug(util_loglevel));
 	}
 	XMLUpdateNode(doc, root, force, "log_limit", "%d", (int32_t) glLogLimit);
-	XMLUpdateNode(doc, root, true, "migration", "%d", (int32_t) glMigration);
-	XMLUpdateNode(doc, root, force, "ports", glPortOpen);
+	XMLUpdateNode(doc, root, false, "ports", "%hu:%hu", glPortBase, glPortRange);
 
-	XMLUpdateNode(doc, common, force, "streambuf_size", "%d", (uint32_t) glDeviceParam.streambuf_size);
-	XMLUpdateNode(doc, common, force, "output_size", "%d", (uint32_t) glDeviceParam.outputbuf_size);
 	XMLUpdateNode(doc, common, force, "enabled", "%d", (int) glMRConfig.Enabled);
-	XMLUpdateNode(doc, common, force, "codecs", glDeviceParam.codecs);
-	XMLUpdateNode(doc, common, force, "sample_rate", "%d", (int) glDeviceParam.sample_rate);
-	XMLUpdateNode(doc, common, force, "resolution", glDeviceParam.resolution);
-#if defined(RESAMPLE)
-	XMLUpdateNode(doc, common, force, "resample", "%d", (int) glDeviceParam.resample);
-	XMLUpdateNode(doc, common, force, "resample_options", glDeviceParam.resample_options);
-#endif
-	XMLUpdateNode(doc, common, force, "player_volume", "%d", (int) glMRConfig.Volume);
-	XMLUpdateNode(doc, common, force, "volume_mapping", glMRConfig.VolumeMapping);
 	XMLUpdateNode(doc, common, force, "volume_feedback", "%d", (int) glMRConfig.VolumeFeedback);
 	XMLUpdateNode(doc, common, force, "volume_mode", "%d", (int) glMRConfig.VolumeMode);
-	XMLUpdateNode(doc, common, force, "mute_on_pause", "%d", (int) glMRConfig.MuteOnPause);
 	XMLUpdateNode(doc, common, force, "send_metadata", "%d", (int) glMRConfig.SendMetaData);
 	XMLUpdateNode(doc, common, force, "send_coverart", "%d", (int) glMRConfig.SendCoverArt);
-	XMLUpdateNode(doc, common, force, "auto_play", "%d", (int) glMRConfig.AutoPlay);
 	XMLUpdateNode(doc, common, force, "idle_timeout", "%d", (int) glMRConfig.IdleTimeout);
 	XMLUpdateNode(doc, common, force, "remove_timeout", "%d", (int) glMRConfig.RemoveTimeout);
 	XMLUpdateNode(doc, common, force, "alac_encode", "%d", (int) glMRConfig.AlacEncode);
 	XMLUpdateNode(doc, common, force, "encryption", "%d", (int) glMRConfig.Encryption);
 	XMLUpdateNode(doc, common, force, "read_ahead", "%d", (int) glMRConfig.ReadAhead);
-	XMLUpdateNode(doc, common, force, "server", glDeviceParam.server);
-
-	// correct some buggy parameters
-	if (glDeviceParam.sample_rate < 44100) XMLUpdateNode(doc, common, true, "sample_rate", "%d", 96000);
 
 	for (int i = 0; i < MAX_RENDERERS; i++) {
 		IXML_Node *dev_node;
@@ -122,20 +104,17 @@ void SaveConfig(char *name, void *ref, int mode) {
 			ixmlNode_appendChild((IXML_Node*) root, dev_node);
 
 			XMLUpdateNode(doc, dev_node, true, "friendly_name", p->FriendlyName);
-			XMLUpdateNode(doc, dev_node, true, "name", p->sq_config.name);
+			XMLUpdateNode(doc, dev_node, true, "name", p->Config.Name);
 			if (*p->Config.Credentials) XMLUpdateNode(doc, dev_node, true, "credentials", p->Config.Credentials);
-			if (*p->sq_config.dynamic.server) XMLUpdateNode(doc, dev_node, true, "server", p->sq_config.dynamic.server);
 		}
 		// new device, add nodes
 		else {
 			dev_node = XMLAddNode(doc, root, "device", NULL);
 			XMLAddNode(doc, dev_node, "udn", p->UDN);
-			XMLAddNode(doc, dev_node, "name", p->FriendlyName);
+			XMLAddNode(doc, dev_node, "name", p->Config.Name);
 			XMLAddNode(doc, dev_node, "friendly_name", p->FriendlyName);
 			if (*p->Config.Credentials) XMLAddNode(doc, dev_node, "credentials", p->Config.Credentials);
-			if (*p->sq_config.dynamic.server) XMLAddNode(doc, dev_node, "server", p->sq_config.dynamic.server);
-			XMLAddNode(doc, dev_node, "mac", "%02x:%02x:%02x:%02x:%02x:%02x", p->sq_config.mac[0],
-						p->sq_config.mac[1], p->sq_config.mac[2], p->sq_config.mac[3], p->sq_config.mac[4], p->sq_config.mac[5]);
+			//XMLAddNode(doc, dev_node, "mac", "%02x:%02x:%02x:%02x:%02x:%02x", );
 			XMLAddNode(doc, dev_node, "enabled", "%d", (int) p->Config.Enabled);
 		}
 	}
@@ -168,28 +147,16 @@ void SaveConfig(char *name, void *ref, int mode) {
 
 
 /*----------------------------------------------------------------------------*/
-static void LoadConfigItem(tMRConfig *Conf, sq_dev_param_t *sq_conf, char *name, char *val) {
+static void LoadConfigItem(tMRConfig *Conf, char *name, char *val) {
 	if (!val)return;
 
-	if (!strcmp(name, "streambuf_size")) sq_conf->streambuf_size = atol(val);
-	if (!strcmp(name, "output_size")) sq_conf->outputbuf_size = atol(val);
-	if (!strcmp(name, "codecs")) strcpy(sq_conf->codecs, val);
-	if (!strcmp(name, "sample_rate")) sq_conf->sample_rate = atol(val);
-	if (!strcmp(name, "name")) strcpy(sq_conf->name, val);
-	if (!strcmp(name, "server")) strcpy(sq_conf->server, val);
-	if (!strcmp(name, "resolution")) strcpy(sq_conf->resolution, val);
 	if (!strcmp(name, "mac"))  {
 		unsigned mac[6];
-		// seems to be a Windows scanf buf, cannot support %hhx
+		// seems to be a Windows scanf bug, cannot support %hx
 		sscanf(val,"%2x:%2x:%2x:%2x:%2x:%2x", &mac[0], &mac[1], &mac[2], &mac[3], &mac[4], &mac[5]);
-		for (int i = 0; i < 6; i++) sq_conf->mac[i] = mac[i];
+		for (int i = 0; i < 6; i++) Conf->MAC[i] = mac[i];
 	}
-#if defined(RESAMPLE)
-	if (!strcmp(name, "resample")) sq_conf->resample = atol(val);
-	if (!strcmp(name, "resample_options")) strcpy(sq_conf->resample_options, val);
-#endif
 	if (!strcmp(name, "enabled")) Conf->Enabled = atol(val);
-	if (!strcmp(name, "auto_play")) Conf->AutoPlay = atol(val);
 	if (!strcmp(name, "idle_timeout")) Conf->IdleTimeout = atol(val);
 	if (!strcmp(name, "remove_timeout")) Conf->RemoveTimeout = atol(val);
 	if (!strcmp(name, "encryption")) Conf->Encryption = atol(val);
@@ -197,12 +164,8 @@ static void LoadConfigItem(tMRConfig *Conf, sq_dev_param_t *sq_conf, char *name,
 	if (!strcmp(name, "read_ahead")) Conf->ReadAhead = atol(val);
 	if (!strcmp(name, "send_metadata")) Conf->SendMetaData = atol(val);
 	if (!strcmp(name, "send_coverart")) Conf->SendCoverArt = atol(val);
-//	if (!strcmp(name, "friendly_name")) strcpy(Conf->Name, val);
-	if (!strcmp(name, "player_volume")) Conf->Volume = atol(val);
-	if (!strcmp(name, "volume_mapping")) strcpy(Conf->VolumeMapping, val);
 	if (!strcmp(name, "volume_feedback")) Conf->VolumeFeedback = atol(val);
 	if (!strcmp(name, "volume_mode")) Conf->VolumeMode = atol(val);
-	if (!strcmp(name, "mute_on_pause")) Conf->MuteOnPause = atol(val);
 	if (!strcmp(name, "alac_encode")) Conf->AlacEncode = atol(val);
 }
 
@@ -220,9 +183,7 @@ static void LoadGlobalItem(char *name, char *val) {
 	if (!strcmp(name, "raop_log")) raop_loglevel = debug2level(val);
 	if (!strcmp(name, "util_log")) util_loglevel = debug2level(val);
 	if (!strcmp(name, "log_limit")) glLogLimit = atol(val);
-	if (!strcmp(name, "exclude_model")) strcpy(glExcluded, val);
-	if (!strcmp(name, "migration")) glMigration = atol(val);
-	if (!strcmp(name, "ports")) strcpy(glPortOpen, val);
+	if (!strcmp(name, "ports")) sscanf(val, "%hu:%hu", &glPortBase, &glPortRange);
  }
 
 
@@ -230,7 +191,7 @@ static void LoadGlobalItem(char *name, char *val) {
 void *FindMRConfig(void *ref, char *UDN) {
 	IXML_Node *device = NULL;
 	IXML_Document *doc = (IXML_Document*) ref;
-	IXML_Element* elm = ixmlDocument_getElementById(doc, "squeeze2raop");
+	IXML_Element* elm = ixmlDocument_getElementById(doc, "spotraop");
 	IXML_NodeList* l1_node_list = ixmlDocument_getElementsByTagName((IXML_Document*) elm, "udn");
 
 	for (unsigned i = 0; i < ixmlNodeList_length(l1_node_list); i++) {
@@ -247,7 +208,7 @@ void *FindMRConfig(void *ref, char *UDN) {
 }
 
 /*----------------------------------------------------------------------------*/
-void *LoadMRConfig(void *ref, char *UDN, tMRConfig *Conf, sq_dev_param_t *sq_conf) {
+void *LoadMRConfig(void *ref, char *UDN, tMRConfig *Conf) {
 	IXML_Document *doc = (IXML_Document*) ref;
 	IXML_Node* node = (IXML_Node*) FindMRConfig(doc, UDN);
 
@@ -258,7 +219,7 @@ void *LoadMRConfig(void *ref, char *UDN, tMRConfig *Conf, sq_dev_param_t *sq_con
 			char* n = (char*) ixmlNode_getNodeName(l1_node);
 			IXML_Node* l1_1_node = ixmlNode_getFirstChild(l1_node);
 			char *v = (char*) ixmlNode_getNodeValue(l1_1_node);
-			LoadConfigItem(Conf, sq_conf, n, v);
+			LoadConfigItem(Conf, n, v);
 		}
 		if (node_list) ixmlNodeList_free(node_list);
 	}
@@ -267,11 +228,11 @@ void *LoadMRConfig(void *ref, char *UDN, tMRConfig *Conf, sq_dev_param_t *sq_con
 }
 
 /*----------------------------------------------------------------------------*/
-void *LoadConfig(char *name, tMRConfig *Conf, sq_dev_param_t *sq_conf) {
+void *LoadConfig(char *name, tMRConfig *Conf) {
 	IXML_Document* doc = ixmlLoadDocument(name);
 	if (!doc) return NULL;
 
-	IXML_Element* elm = ixmlDocument_getElementById(doc, "squeeze2raop");
+	IXML_Element* elm = ixmlDocument_getElementById(doc, "spotraop");
 	if (elm) {
 		IXML_NodeList* l1_node_list = ixmlNode_getChildNodes((IXML_Node*) elm);
 		for (unsigned i = 0; i < ixmlNodeList_length(l1_node_list); i++) {
@@ -292,13 +253,10 @@ void *LoadConfig(char *name, tMRConfig *Conf, sq_dev_param_t *sq_conf) {
 			char* n = (char*) ixmlNode_getNodeName(l1_node);
 			IXML_Node* l1_1_node = ixmlNode_getFirstChild(l1_node);
 			char* v = (char*) ixmlNode_getNodeValue(l1_1_node);
-			LoadConfigItem(&glMRConfig, &glDeviceParam, n, v);
+			LoadConfigItem(&glMRConfig, n, v);
 		}
 		if (l1_node_list) ixmlNodeList_free(l1_node_list);
 	}
 
 	return doc;
  }
-
-
-
