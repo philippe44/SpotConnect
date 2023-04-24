@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.0)
 if(WIN32)
 	set(HOST Win32)
 	set(PLATFORM x86)
-	set(LIB lib)
+	set(LIBRARY_SUFFIX ".lib")
 	set(PROJECT "spotraop")
 else()
 	if(NOT HOST OR NOT PLATFORM)
@@ -28,7 +28,7 @@ else()
 		endif()
 	endif()
 
-	set(LIB a)
+	set(LIBRARY_SUFFIX ".a")
 	set(PROJECT "spotraop-${HOST}-${PLATFORM}")
 endif()
 
@@ -80,31 +80,30 @@ list(APPEND EXTRA_INCLUDES src ${BASE}/common ${BASE}/spotraop/http-fetcher/incl
 add_executable(${PROJECT} ${SOURCES})
 
 # Other includes
-list(APPEND EXTRA_INCLUDES ../common/crosstools/src)
+list(APPEND EXTRA_INCLUDES ${BASE}/common/crosstools/src)
 
 # libpupnp
-target_include_directories(${PROJECT} PRIVATE ${BASE}/common/libpupnp/targets/${HOST}/${PLATFORM}/include/upnp)
-target_include_directories(${PROJECT} PRIVATE ${BASE}/common/libpupnp/targets/${HOST}/${PLATFORM}/include/ixml)
-target_include_directories(${PROJECT} PRIVATE ${BASE}/common/libpupnp/targets/${HOST}/${PLATFORM}/include/addons)
-list(APPEND EXTRA_LIBS ${BASE}/common/libpupnp/targets/${HOST}/${PLATFORM}/libpupnp.${LIB})
+list(APPEND EXTRA_INCLUDES ${BASE}/common/libpupnp/targets/${HOST}/${PLATFORM}/include/upnp)
+list(APPEND EXTRA_INCLUDES ${BASE}/common/libpupnp/targets/${HOST}/${PLATFORM}/include/ixml)
+list(APPEND EXTRA_INCLUDES ${BASE}/common/libpupnp/targets/${HOST}/${PLATFORM}/include/addons)
+list(APPEND EXTRA_LIBS ${BASE}/common/libpupnp/targets/${HOST}/${PLATFORM}/libpupnp${LIBRARY_SUFFIX})
 
 # libraop
-target_include_directories(${PROJECT} PRIVATE ${BASE}/spotraop/libraop/targets/include)
-list(APPEND EXTRA_LIBS ${BASE}/spotraop/libraop/targets/${HOST}/${PLATFORM}/libraop.${LIB})
+list(APPEND EXTRA_INCLUDES ${BASE}/spotraop/libraop/targets/include)
+list(APPEND EXTRA_LIBS ${BASE}/spotraop/libraop/targets/${HOST}/${PLATFORM}/libraop${LIBRARY_SUFFIX})
 
 # openSSL manually
-target_include_directories(${PROJECT} PRIVATE ${BASE}/spotraop/libopenssl/targets/${HOST}/${PLATFORM}/include)
-target_link_libraries(${PROJECT} PRIVATE ${BASE}/spotraop/libopenssl/targets/${HOST}/${PLATFORM}/libopenssl.${LIB})
+list(APPEND EXTRA_INCLUDES ${BASE}/spotraop/libopenssl/targets/${HOST}/${PLATFORM}/include)
 
 # mDNS manually
-target_include_directories(${PROJECT} PRIVATE ${BASE}/spotraop/libmdns/targets/include/mdnssvc)
-target_include_directories(${PROJECT} PRIVATE ${BASE}/spotraop/libmdns/targets/include/mdnssd)
-target_link_libraries(${PROJECT} PRIVATE ${BASE}/spotraop/libmdns/targets/${HOST}/${PLATFORM}/libmdns.${LIB})
+list(APPEND EXTRA_INCLUDES ${BASE}/spotraop/libmdns/targets/include/mdnssvc)
+list(APPEND EXTRA_INCLUDES ${BASE}/spotraop/libmdns/targets/include/mdnssd)
+list(APPEND EXTRA_LIBS ${BASE}/spotraop/libmdns/targets/${HOST}/${PLATFORM}/libmdns${LIBRARY_SUFFIX})
 
 # codecs with cmake
 find_package(libcodecs REQUIRED CONFIG PATHS ${BASE}/common/libcodecs)
 get_target_property(_INFO libcodecs::codecs INTERFACE_INCLUDE_DIRECTORIES)
-target_include_directories(${PROJECT} PRIVATE "${_INFO}")
+list(APPEND EXTRA_INCLUDES "${_INFO}")
 get_target_property(_INFO libcodecs::codecs IMPORTED_LOCATION_RELEASE)
 set(BELL_EXTERNAL_VORBIS "${_INFO}" CACHE STRING "")
 # or do manually
@@ -114,8 +113,8 @@ set(BELL_EXTERNAL_VORBIS "${_INFO}" CACHE STRING "")
 
 # pthreads
 if(MSVC)
-target_include_directories(${PROJECT} PRIVATE ${BASE}/common/libpthreads4w/targets/${HOST}/${PLATFORM}/include)
-target_link_libraries(${PROJECT} PRIVATE ${BASE}/common/libpthreads4w/targets/${HOST}/${PLATFORM}/libpthreadVC3.lib)
+    list(APPEND EXTRA_INCLUDES ${BASE}/common/libpthreads4w/targets/${HOST}/${PLATFORM}/include)
+    list(APPEND EXTRA_LIBS ${BASE}/common/libpthreads4w/targets/${HOST}/${PLATFORM}/libpthreadVC3.lib)
 endif()
 
 # Import cspot library
@@ -124,28 +123,33 @@ add_subdirectory(${BASE}/common/cspot/cspot ${CMAKE_CURRENT_BINARY_DIR}/cspot)
 target_include_directories(cspot PRIVATE ${BASE}/common/libcodecs/targets/include/vorbis)
 target_include_directories(cspot PRIVATE ${BASE}/common/libcodecs/targets/include/ogg)
 
-# Configure the target
 if(NOT MSVC)
-        target_link_libraries(${PROJECT} PUBLIC dl)
-	if(NOT APPLE AND NOT CMAKE_SYSTEM_NAME STREQUAL "SunOS")
-		#target_link_options(${PROJECT} PUBLIC -static)
-	endif()
+    list(APPEND EXTRA_LIBS dl)
 	if(CMAKE_SYSTEM_NAME STREQUAL Linux AND (CMAKE_SYSTEM_PROCESSOR STREQUAL armv5 OR
 					 	 CMAKE_SYSTEM_PROCESSOR STREQUAL mips OR
 						 CMAKE_SYSTEM_PROCESSOR STREQUAL powerpc))
-		set(CMAKE_CXX_LINK_EXECUTABLE "${CMAKE_CXX_LINK_EXECUTABLE} -latomic")
+        list(APPEND EXTRA_LIBS atomic)
 	endif()
 	if(CMAKE_SYSTEM_NAME STREQUAL SunOS)
-		set(CMAKE_CXX_LINK_EXECUTABLE "${CMAKE_CXX_LINK_EXECUTABLE} -lresolv")
-	endif()
-	if(CMAKE_SYSTEM_NAME STREQUAL Linux AND CMAKE_SYSTEM_PROCESSOR STREQUAL x86_64)
-		#set(CMAKE_CXX_LINK_EXECUTABLE "${CMAKE_CXX_LINK_EXECUTABLE} -lmvec")
-	endif()
-	if(CMAKE_SYSTEM_NAME STREQUAL SunOS)
-		set(CMAKE_CXX_LINK_EXECUTABLE "${CMAKE_CXX_LINK_EXECUTABLE} -lssp")
+        list(APPEND EXTRA_LIBS resolv ssp)
 	endif()
 endif()
 
+target_include_directories(${PROJECT} PRIVATE "." ${EXTRA_INCLUDES})
 target_compile_definitions(${PROJECT} PRIVATE -DUPNP_STATIC_LIB -D_GNU_SOURCE -DUSE_SSL)
 target_link_libraries(${PROJECT} PUBLIC cspot ${EXTRA_LIBS})
-target_include_directories(${PROJECT} PRIVATE "." ${EXTRA_INCLUDES})
+target_link_libraries(${PROJECT} PRIVATE ${BASE}/spotraop/libopenssl/targets/${HOST}/${PLATFORM}/libopenssl${LIBRARY_SUFFIX})
+
+# Configure the targets
+if(NOT APPLE AND NOT CMAKE_SYSTEM_NAME STREQUAL "SunOS")
+    add_executable(${PROJECT}-static ${SOURCES})
+    target_include_directories(${PROJECT}-static PRIVATE "." ${EXTRA_INCLUDES})
+    target_compile_definitions(${PROJECT}-static PRIVATE -DUPNP_STATIC_LIB -D_GNU_SOURCE -DUSE_SSL -DSSL_STATIC_LIB)
+    target_link_libraries(${PROJECT}-static PUBLIC cspot ${EXTRA_LIBS})
+    if(MSVC)
+        target_link_libraries(${PROJECT}-static PRIVATE ${BASE}/spotraop/libopenssl/targets/${HOST}/${PLATFORM}/libopenssl_static${LIBRARY_SUFFIX})
+    else()
+        target_link_libraries(${PROJECT}-static PRIVATE ${BASE}/spotraop/libopenssl/targets/${HOST}/${PLATFORM}/libopenssl${LIBRARY_SUFFIX})
+    endif()
+endif()
+
