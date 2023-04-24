@@ -100,7 +100,7 @@ do
 		cmake $pwd -DCMAKE_SYSTEM_NAME=${cmake_name["$host"]:-"$host"} -DCMAKE_SYSTEM_PROCESSOR=${cmake_processor["$platform"]:-"$platform"} -DCMAKE_C_COMPILER=$CC -DCMAKE_CXX_COMPILER=$CXX -DHOST=$host -DPLATFORM=$platform -DBELL_EXTERNAL_MBEDTLS=$pwd/../common/libmbedtls
 	fi
 	
-	make -j16 && mkdir -p $pwd/bin && cp ./spotupnp-$host-$platform $pwd/bin
+	make -j16 && mkdir -p $pwd/bin && cp ./spotupnp-$host-$platform* $pwd/bin
 
 	cd $pwd
 

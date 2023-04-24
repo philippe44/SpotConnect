@@ -3,8 +3,8 @@ cmake_minimum_required(VERSION 3.0)
 if(WIN32)
 	set(HOST Win32)
 	set(PLATFORM x86)
-	set(LIB lib)
 	set(PROJECT "spotupnp")
+    set(LIBRARY_SUFFIX ".lib")
 else()
 	if(NOT HOST OR NOT PLATFORM)
 		if(CMAKE_C_COMPILER)
@@ -27,8 +27,7 @@ else()
 			list(GET CC_SPLIT 2 HOST)
 		endif()
 	endif()
-
-	set(LIB a)
+    set(LIBRARY_SUFFIX ".a")
 	set(PROJECT "spotupnp-${HOST}-${PLATFORM}")
 endif()
 
@@ -39,12 +38,6 @@ endif()
 
 set(BASE ${CMAKE_CURRENT_SOURCE_DIR}/..)
 project(${PROJECT})
-
-# get_cmake_property(_variableNames VARIABLES)
-# list (SORT _variableNames)
-# foreach (_variableName ${_variableNames})
-    # message(STATUS "${_variableName}=${${_variableName}}")
-# endforeach()
 
 message(STATUS "Base directory is ${BASE}")
 message(STATUS "Using CC ${CMAKE_C_COMPILER} and ${CMAKE_CXX_COMPILER}")
@@ -71,6 +64,7 @@ set(BELL_DISABLE_MQTT ON)
 
 # CMake options
 set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_C_STANDARD 11)
 
 if(MSVC)
 	add_compile_definitions(NOMINMAX _WINSOCK_DEPRECATED_NO_WARNINGS _CRT_SECURE_NO_WARNINGS _CRT_NONSTDC_NO_DEPRECATE UPNP_USE_MSVCPP)
@@ -86,29 +80,29 @@ list(APPEND EXTRA_INCLUDES src ${BASE}/common)
 add_executable(${PROJECT} ${SOURCES})
 
 # Other includes
-list(APPEND EXTRA_INCLUDES ../common/crosstools/src)
+list(APPEND EXTRA_INCLUDES ${BASE}/common/crosstools/src)
 
 # libpupnp
-target_include_directories(${PROJECT} PRIVATE ${BASE}/common/libpupnp/targets/${HOST}/${PLATFORM}/include/upnp)
-target_include_directories(${PROJECT} PRIVATE ${BASE}/common/libpupnp/targets/${HOST}/${PLATFORM}/include/ixml)
-target_include_directories(${PROJECT} PRIVATE ${BASE}/common/libpupnp/targets/${HOST}/${PLATFORM}/include/addons)
-list(APPEND EXTRA_LIBS ${BASE}/common/libpupnp/targets/${HOST}/${PLATFORM}/libpupnp.${LIB})
+list(APPEND EXTRA_INCLUDES ${BASE}/common/libpupnp/targets/${HOST}/${PLATFORM}/include/upnp)
+list(APPEND EXTRA_INCLUDES ${BASE}/common/libpupnp/targets/${HOST}/${PLATFORM}/include/ixml)
+list(APPEND EXTRA_INCLUDES ${BASE}/common/libpupnp/targets/${HOST}/${PLATFORM}/include/addons)
+list(APPEND EXTRA_LIBS ${BASE}/common/libpupnp/targets/${HOST}/${PLATFORM}/libpupnp${LIBRARY_SUFFIX})
 
 # codecs with cmake
 find_package(libcodecs REQUIRED CONFIG PATHS ${BASE}/common/libcodecs)
 get_target_property(_INFO libcodecs::codecs INTERFACE_INCLUDE_DIRECTORIES)
-target_include_directories(${PROJECT} PRIVATE "${_INFO}")
+list(APPEND EXTRA_INCLUDES "${_INFO}")
 get_target_property(_INFO libcodecs::codecs IMPORTED_LOCATION_RELEASE)
 set(BELL_EXTERNAL_VORBIS "${_INFO}" CACHE STRING "")
 # or do manually
 # target_include_directories(${PROJECT} PRIVATE ${BASE}/common/libcodecs/targets/include/flac ${BASE}/common/libcodecs/targets/include/shine)
 # target_include_directories(${PROJECT} PRIVATE ${BASE}/common/libcodecs/targets/include/ogg ${BASE}/common/libcodecs/targets/include/vorbis)
-# set(BELL_EXTERNAL_VORBIS ${BASE}/common/libcodecs/targets/${HOST}/${PLATFORM}/libcodecs.${LIB})
+# set(BELL_EXTERNAL_VORBIS ${BASE}/common/libcodecs/targets/${HOST}/${PLATFORM}/libcodecs})
 
-if(MSVC)
 # pthreads
-target_include_directories(${PROJECT} PRIVATE ${BASE}/common/libpthreads4w/targets/${HOST}/${PLATFORM}/include)
-target_link_libraries(${PROJECT} PRIVATE ${BASE}/common/libpthreads4w/targets/${HOST}/${PLATFORM}/libpthreadVC3.lib)
+if(MSVC)
+    list(APPEND EXTRA_INCLUDES ${BASE}/common/libpthreads4w/targets/${HOST}/${PLATFORM}/include)
+    list(APPEND EXTRA_LIBS ${BASE}/common/libpthreads4w/targets/${HOST}/${PLATFORM}/libpthreadVC3${LIBRARY_SUFFIX})
 endif()
 
 # Import cspot library
@@ -120,16 +114,18 @@ target_include_directories(cspot PRIVATE ${BASE}/common/libcodecs/targets/includ
 # Configure the target
 if(NOT MSVC)
 	if(NOT APPLE AND NOT CMAKE_SYSTEM_NAME STREQUAL "SunOS")
-		#target_link_options(${PROJECT} PUBLIC -static)
-	endif()
-	if(CMAKE_SYSTEM_NAME STREQUAL Linux AND CMAKE_SYSTEM_PROCESSOR STREQUAL x86_64)
-		#set(CMAKE_CXX_LINK_EXECUTABLE "${CMAKE_CXX_LINK_EXECUTABLE} -lmvec")
+        add_executable(${PROJECT}-static ${SOURCES})
+        target_link_options(${PROJECT}-static PUBLIC -static)
+        target_include_directories(${PROJECT}-static PRIVATE "." ${EXTRA_INCLUDES})
+        target_compile_definitions(${PROJECT}-static PRIVATE -DFLAC__NO_DLL -DUPNP_STATIC_LIB -D_GNU_SOURCE)
+        target_link_libraries(${PROJECT}-static PUBLIC cspot ${EXTRA_LIBS})
 	endif()
 	if(CMAKE_SYSTEM_NAME STREQUAL SunOS)
 		set(CMAKE_CXX_LINK_EXECUTABLE "${CMAKE_CXX_LINK_EXECUTABLE} -lssp")
 	endif()
+    
 endif()
 
+target_include_directories(${PROJECT} PRIVATE "." ${EXTRA_INCLUDES})
 target_compile_definitions(${PROJECT} PRIVATE -DFLAC__NO_DLL -DUPNP_STATIC_LIB -D_GNU_SOURCE)
 target_link_libraries(${PROJECT} PUBLIC cspot ${EXTRA_LIBS})
-target_include_directories(${PROJECT} PRIVATE "." ${EXTRA_INCLUDES})
