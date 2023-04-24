@@ -121,9 +121,8 @@ if(NOT MSVC)
         target_link_libraries(${PROJECT}-static PUBLIC cspot ${EXTRA_LIBS})
 	endif()
 	if(CMAKE_SYSTEM_NAME STREQUAL SunOS)
-		set(CMAKE_CXX_LINK_EXECUTABLE "${CMAKE_CXX_LINK_EXECUTABLE} -lssp")
+        list(APPEND EXTRA_LIBS ssp)                         
 	endif()
-    
 endif()
 
 target_include_directories(${PROJECT} PRIVATE "." ${EXTRA_INCLUDES})

@@ -86,7 +86,6 @@ void SaveConfig(char *name, void *ref, int mode) {
 	XMLUpdateNode(doc, common, force, "volume_mode", "%d", (int) glMRConfig.VolumeMode);
 	XMLUpdateNode(doc, common, force, "send_metadata", "%d", (int) glMRConfig.SendMetaData);
 	XMLUpdateNode(doc, common, force, "send_coverart", "%d", (int) glMRConfig.SendCoverArt);
-	XMLUpdateNode(doc, common, force, "idle_timeout", "%d", (int) glMRConfig.IdleTimeout);
 	XMLUpdateNode(doc, common, force, "remove_timeout", "%d", (int) glMRConfig.RemoveTimeout);
 	XMLUpdateNode(doc, common, force, "alac_encode", "%d", (int) glMRConfig.AlacEncode);
 	XMLUpdateNode(doc, common, force, "encryption", "%d", (int) glMRConfig.Encryption);
@@ -157,7 +156,6 @@ static void LoadConfigItem(tMRConfig *Conf, char *name, char *val) {
 		for (int i = 0; i < 6; i++) Conf->MAC[i] = mac[i];
 	}
 	if (!strcmp(name, "enabled")) Conf->Enabled = atol(val);
-	if (!strcmp(name, "idle_timeout")) Conf->IdleTimeout = atol(val);
 	if (!strcmp(name, "remove_timeout")) Conf->RemoveTimeout = atol(val);
 	if (!strcmp(name, "encryption")) Conf->Encryption = atol(val);
 	if (!strcmp(name, "credentials")) strcpy(Conf->Credentials, val);

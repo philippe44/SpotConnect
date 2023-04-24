@@ -73,20 +73,19 @@ log_level	raop_loglevel = lINFO;
 bool 		log_cmdline = false;
 
 tMRConfig			glMRConfig = {
-							true,
-							"",				// Name
+							true,			 // Enabled
+							"",				 // Name
 							{0, 0, 0, 0, 0, 0 }, // MAC
-							true,			// sendMetaData
-							true,			// sendCoverArt
-							160,			// VorbisRate
-							30, 			// IdleTimeout
-							0,				// RemoveTimeout
-							false,
-							"",				 // credentials
-							1000,			 // read_ahead
+							true,			 // sendMetaData
+							true,			 // sendCoverArt         
+							160,			 // VorbisRate
+							120,			 // RemoveTimeout
+							false,			 // Encryption
+							"",				 // Credentials
+							1000,			 // ReadAhead
 							2,				 // VolumeMode = HARDWARE
-							VOLUME_FEEDBACK, // volumeFeedback
-							true,			 // alac_encode
+							VOLUME_FEEDBACK, // VolumeFeedback
+							true,			 // AlacEncode
 					};
 
 /*----------------------------------------------------------------------------*/
@@ -382,7 +381,7 @@ bool mDNSsearchCallback(mdnssd_service_t *slist, void *cookie, bool *stop) {
 		if (!Device->Running || Device->Config.RemoveTimeout <= 0 || !Device->Expired || now < Device->Expired + Device->Config.RemoveTimeout*1000) continue;
 
 		LOG_INFO("[%p]: removing renderer (%s) on timeout", Device, Device->FriendlyName);
-		//if (Device->SqueezeHandle) sq_delete_device(Device->SqueezeHandle);
+		spotDeletePlayer(Device->SpotPlayer);
 		DelRaopDevice(Device);
 	}
 
@@ -960,7 +959,8 @@ static void sighandler(int signum) {
 		LOG_INFO("forced exit", NULL);
 		exit(EXIT_SUCCESS);
 	}
-	//sq_end();
+
+	spotClose();
 	Stop();
 	exit(EXIT_SUCCESS);
 }
@@ -1209,7 +1209,7 @@ int main(int argc, char *argv[])
 	}
 
 	LOG_INFO("stopping cspot devices ...", NULL);
-	//sq_end();
+	spotClose();
 	LOG_INFO("stopping Raop devices ...", NULL);
 	Stop();
 	LOG_INFO("all done", NULL);
