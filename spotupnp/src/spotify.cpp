@@ -545,7 +545,7 @@ void CSpotPlayer::runTask() {
         // we might just be woken up to exit
         if (!isRunning) break;
 
-        CSPOT_LOG(info, "Spotified client connected for %s", name.c_str());
+        CSPOT_LOG(info, "Spotify client connected for %s", name.c_str());
 
         auto ctx = cspot::Context::createFromBlob(blob);
         ctx->config.audioFormat = format;
