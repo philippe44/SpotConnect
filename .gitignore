@@ -43,6 +43,7 @@ build*/
 *.old
 *.log
 .vs/
+pairing/
 
 # Added files
 !build.cmd
