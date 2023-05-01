@@ -36,99 +36,23 @@
 static uint16_t portBase, portRange;
 
 /****************************************************************************************
- * Chunk manager class (task)
- */
-
-class chunkManager : public bell::Task {
-public:
-    std::atomic<bool> isRunning = true;
-    std::atomic<bool> isPaused = true;
-    chunkManager(std::function<void()> trackHandler, std::function<bool(const uint8_t*, size_t)> audioHandler);
-    size_t writePCM(uint8_t* data, size_t bytes, std::string_view trackId, size_t sequence);
-    void teardown();
-    void flush();
-
-private:
-    std::unique_ptr<bell::CentralAudioBuffer> centralAudioBuffer;
-    std::function<void()> trackHandler;
-    std::function<bool(uint8_t*, size_t)> audioHandler;
-    std::mutex runningMutex;
-    
-    void runTask() override;
-};
-
-chunkManager::chunkManager(std::function<void()> trackHandler, std::function<bool(const uint8_t*, size_t)> audioHandler)
-    : bell::Task("player", 16 * 1024, 0, 0) {
-    this->isPaused = false;
-    this->centralAudioBuffer = std::make_unique<bell::CentralAudioBuffer>(128);
-    this->trackHandler = trackHandler;
-    this->audioHandler = audioHandler;
-    startTask();
-}
-
-void chunkManager::runTask() {
-    std::scoped_lock lock(runningMutex);
-    bell::CentralAudioBuffer::AudioChunk* chunk = NULL;
-    size_t lastHash = 0;
-    
-    while (isRunning) {
-        if (!isPaused) {
-            if (!chunk) {
-                chunk = centralAudioBuffer->readChunk();
-            }
-
-            if (!chunk || chunk->pcmSize == 0) {
-                BELL_SLEEP_MS(25);
-                chunk = NULL;
-                continue;
-            }
-
-            // receiving first chunk of new track from Spotify server
-            if (lastHash != chunk->trackHash) {
-                CSPOT_LOG(info, "hash update %x => %x", lastHash, chunk->trackHash);
-                lastHash = chunk->trackHash;
-                trackHandler();
-            }
-
-            if (audioHandler(chunk->pcmData, chunk->pcmSize)) {
-                chunk = NULL;
-            } else {
-                BELL_SLEEP_MS(25);
-            }
-        } else {
-            BELL_SLEEP_MS(25);
-        }
-    }
-}
-
-size_t chunkManager::writePCM(uint8_t* data, size_t bytes, std::string_view trackId, size_t sequence) {
-    return centralAudioBuffer->writePCM(data, bytes, sequence);
-}
-
-void chunkManager::teardown() {
-    isRunning = false;
-    std::scoped_lock lock(runningMutex);
-}
-
-void chunkManager::flush() {
-    centralAudioBuffer->clearBuffer();
-}
-
-/****************************************************************************************
  * Player's main class  & task
  */
 
 class CSpotPlayer : public bell::Task {
 private:
     std::string name;
-        
+
+    std::atomic<bool> isPaused = true;
+    std::atomic<bool> isConnected = false;
     std::mutex runningMutex;
     bell::WrappedSemaphore clientConnected;
+    size_t sequence = 0;
     int volume = 0;
     int32_t startOffset;
     std::atomic<int> expectedSync;
     std::unique_ptr<cspot::CDNTrackStream::TrackInfo> flowTrackInfo;
-    
+
     unsigned index = 0;
 
     std::string codec, id;
@@ -147,35 +71,47 @@ private:
     std::unique_ptr<bell::BellHTTPServer> server;
     std::shared_ptr<cspot::LoginBlob> blob;
     std::unique_ptr<cspot::SpircHandler> spirc;
-    std::unique_ptr<chunkManager> chunker;
-    
+
+    size_t writePCM(uint8_t* data, size_t bytes, std::string_view trackId, size_t sequence);
     auto postHandler(struct mg_connection* conn);
     void eventHandler(std::unique_ptr<cspot::SpircHandler::Event> event);
     void trackHandler(void);
     HTTPheaders onHeaders(HTTPheaders request);
-    void flowSync(cspot::CDNTrackStream::TrackInfo *trackInfo);
-    
+    void flowSync(cspot::CDNTrackStream::TrackInfo* trackInfo);
+
     void runTask();
 public:
-    CSpotPlayer(char* name, char* id, struct in_addr addr, AudioFormat audio, char* codec,  bool flow, 
-                int64_t contentLength, struct shadowPlayer* shadow);
+    CSpotPlayer(char* name, char* id, struct in_addr addr, AudioFormat audio, char* codec, bool flow,
+        int64_t contentLength, struct shadowPlayer* shadow);
     ~CSpotPlayer();
     std::atomic<bool> isRunning = false;
     void teardown();
     void disconnect();
-    bool getMetaForUrl(const char* StreamUrl, metadata_t *metadata);
+    bool getMetaForUrl(const char* StreamUrl, metadata_t* metadata);
     void notify(enum shadowEvent event, va_list args);
 };
 
-CSpotPlayer::CSpotPlayer(char* name, char* id, struct in_addr addr, AudioFormat format, char *codec, bool flow, 
-                         int64_t contentLength, struct shadowPlayer* shadow) : bell::Task("playerInstance", 
-                         48 * 1024, 0, 0), 
-                         clientConnected(1), codec(codec), id(id), addr(addr), flow(flow), 
-                         name(name), format(format), shadow(shadow) {
-    this->contentLength = (flow && !contentLength) ? HTTP_CL_NONE : contentLength;  
+CSpotPlayer::CSpotPlayer(char* name, char* id, struct in_addr addr, AudioFormat format, char* codec, bool flow,
+    int64_t contentLength, struct shadowPlayer* shadow) : bell::Task("playerInstance",
+        48 * 1024, 0, 0),
+    clientConnected(1), codec(codec), id(id), addr(addr), flow(flow),
+    name(name), format(format), shadow(shadow) {
+    this->contentLength = (flow && !contentLength) ? HTTP_CL_NONE : contentLength;
 }
 
 CSpotPlayer::~CSpotPlayer() {
+}
+
+size_t CSpotPlayer::writePCM(uint8_t* data, size_t bytes, std::string_view trackId, size_t sequence) {
+    if (this->sequence != sequence) {
+        CSPOT_LOG(info, "sequence update %zx => %zx", this->sequence, sequence);
+        this->sequence = sequence;
+        trackHandler();
+    }
+
+    std::scoped_lock lock(streamersMutex);
+    if (!streamers.empty() && streamers.front()->feedPCMFrames(data, bytes)) return bytes;
+    return 0;
 }
 
 auto CSpotPlayer::postHandler(struct mg_connection* conn) {
@@ -256,7 +192,7 @@ void CSpotPlayer::trackHandler(void) {
 
         // position is optional, shadow player might use it or not
         shadowRequest(shadow, SPOT_LOAD, streamer->getStreamUrl().c_str(), &metadata, (uint32_t)  -streamer->offset);
-        if (!chunker->isPaused) shadowRequest(shadow, SPOT_PLAY);
+        if (!isPaused) shadowRequest(shadow, SPOT_PLAY);
 
         streamers.emplace_front(streamer);
         streamer->startTask();
@@ -288,7 +224,6 @@ void CSpotPlayer::flowSync(cspot::CDNTrackStream::TrackInfo *trackInfo) {
  void CSpotPlayer::eventHandler(std::unique_ptr<cspot::SpircHandler::Event> event) {
     switch (event->eventType) {
     case cspot::SpircHandler::EventType::PLAYBACK_START: {
-        chunker->flush();
         shadowRequest(shadow, SPOT_STOP);
 
         // memorize position for when track's beginning will be detected
@@ -310,16 +245,15 @@ void CSpotPlayer::flowSync(cspot::CDNTrackStream::TrackInfo *trackInfo) {
         break;
     }
     case cspot::SpircHandler::EventType::PLAY_PAUSE:
-        chunker->isPaused = std::get<bool>(event->data);
+        isPaused = std::get<bool>(event->data);
         if (!streamers.empty()) {
-            shadowRequest(shadow, chunker->isPaused ? SPOT_PAUSE : SPOT_PLAY);
+            shadowRequest(shadow, isPaused ? SPOT_PAUSE : SPOT_PLAY);
         }
         break;
     case cspot::SpircHandler::EventType::NEXT:
     case cspot::SpircHandler::EventType::PREV:
     case cspot::SpircHandler::EventType::FLUSH: {
-        // send when there is no next, just clean everything
-        chunker->flush();
+        // send when there is no next, just stop
         shadowRequest(shadow, SPOT_STOP);
         std::scoped_lock lock(streamersMutex);
         streamers.clear();
@@ -330,10 +264,8 @@ void CSpotPlayer::flowSync(cspot::CDNTrackStream::TrackInfo *trackInfo) {
         break;
     case cspot::SpircHandler::EventType::SEEK: {
         /* Seek does not exist for shadow's player but we need to keep the current streamer. So
-         * first stop frame feeding then empty pcm buffer and finally stop that should close the
-         * current connection and PLAY should open a new one, all on the same url/streamer */
-        chunker->flush();
-
+         * stop that should close the current connection and PLAY should open a new one, all on 
+         * the same url/streamer */
         std::scoped_lock lock(streamersMutex);
 
         // remove all streamers except the on the is being aired (if any)
@@ -358,7 +290,7 @@ void CSpotPlayer::flowSync(cspot::CDNTrackStream::TrackInfo *trackInfo) {
         expectedSync = 1;
 
         shadowRequest(shadow, SPOT_LOAD, streamer->getStreamUrl().c_str(), &metadata, -streamer->offset);
-        if (!chunker->isPaused) shadowRequest(shadow, SPOT_PLAY);
+        if (!isPaused) shadowRequest(shadow, SPOT_PLAY);
         break;
     }
     case cspot::SpircHandler::EventType::DEPLETED:
@@ -457,8 +389,7 @@ void CSpotPlayer::notify(enum shadowEvent event, va_list args) {
 void CSpotPlayer::teardown() {
     isRunning = false;
 
-    // we might never have been active, so there is no chunker
-    if (chunker) chunker->teardown();
+    // unlock ourselves as we are waiting
     clientConnected.give();
 
     // stop all streamers (shaed_ptr's destructor will be called)
@@ -473,9 +404,8 @@ void CSpotPlayer::teardown() {
 
 void CSpotPlayer::disconnect() {
     CSPOT_LOG(info, "Disconnecting %s", name.c_str());
-    chunker->flush();
     shadowRequest(shadow, SPOT_STOP);
-    chunker->teardown();
+    isConnected = false;
     // no need to protect streamers as the chunkManager is already down    
     for (auto it = streamers.begin(); it != streamers.end(); ++it) (*it)->teardown();
     streamers.clear();
@@ -556,21 +486,12 @@ void CSpotPlayer::runTask() {
         // Auth successful
         if (token.size() > 0) {
             spirc = std::make_unique<cspot::SpircHandler>(ctx);
-
-            // Create a player, pass the tack handler
-            chunker = std::make_unique<chunkManager>(
-                [this](void) {
-                    return trackHandler();
-                },
-                [this](const uint8_t* data, size_t bytes) {
-                    std::scoped_lock lock(streamersMutex);
-                return !streamers.empty() ? streamers.front()->feedPCMFrames(data, bytes) : true;
-                });
+            isConnected = true;
 
             // set call back to calculate a hash on trackId
             spirc->getTrackPlayer()->setDataCallback(
                 [this](uint8_t* data, size_t bytes, std::string_view trackId, size_t sequence) {
-                    return chunker->writePCM(data, bytes, trackId, sequence);
+                    return writePCM(data, bytes, trackId, sequence);
                 });
 
             // set event (PLAY, VOLUME...) handler
@@ -583,7 +504,7 @@ void CSpotPlayer::runTask() {
             ctx->session->startTask();
 
             // exit when player has stopped (received a DISC)
-            while (chunker->isRunning) {
+            while (isConnected) {
                 ctx->session->handlePacket();
             }
 

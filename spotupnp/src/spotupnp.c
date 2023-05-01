@@ -629,20 +629,11 @@ int ActionHandler(Upnp_EventType EventType, const void *Event, void *Cookie) {
 						p->Elapsed = Elapsed;
 					}
 
-					/*
-					static int LastElapsed = 0;
-					if (Elapsed > LastElapsed + 10 || Elapsed + 10 < LastElapsed) {
-						LOG_INFO("elapsed %d", Elapsed + p->ElapsedOffset);
-						LastElapsed = Elapsed;
-					}
-					*/
-
-					// they can also send some backward position (unless it's an UPnP issue)
-					if (Elapsed > p->Elapsed) {
-						// this is a safe call
-						spotNotify(p->SpotPlayer, SHADOW_TIME, (Elapsed + p->ElapsedOffset) * 1000);
-						p->Elapsed = Elapsed;
-					}
+					// @FIXME: some player seems to send previous' track position (WX) or even backward 
+					// position, need to find a ay to fix this, but using Elapsed > p->Elapsed is not
+					// a solution as p->Elapsed is reset at LOAD
+					spotNotify(p->SpotPlayer, SHADOW_TIME, (Elapsed + p->ElapsedOffset) * 1000);
+					p->Elapsed = Elapsed;
 
 					free(r);
 				}
