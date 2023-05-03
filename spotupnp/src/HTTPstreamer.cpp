@@ -88,15 +88,17 @@ void ringBuffer::write(const uint8_t* src, size_t size) {
 
 HTTPstreamer::HTTPstreamer(struct in_addr addr, std::string id, unsigned index, std::string codec, 
                            bool flow, int64_t contentLength,
-                           cspot::CDNTrackStream::TrackInfo trackInfo, int32_t startOffset,
-                           onHeadersHandler onHeaders) :
+                           cspot::TrackInfo trackInfo, std::string_view trackUnique, int32_t startOffset,
+                           onHeadersHandler onHeaders, EoSCallback onEoS) :
                            bell::Task("HTTP streamer", 32 * 1024, 0, 0) {
     this->streamId = id + "_" + std::to_string(index);
+    this->trackUnique = trackUnique;
     this->listenSock = socket(AF_INET, SOCK_STREAM, 0);
     this->host = std::string(inet_ntoa(addr));
     this->flow = flow;
     this->trackInfo = trackInfo;
     this->onHeaders = onHeaders;
+    this->onEoS = onEoS;
     // for flow mode, start with a negative offset so that we can always substract
     this->offset = startOffset;
 
@@ -143,7 +145,7 @@ HTTPstreamer::~HTTPstreamer() {
     isRunning = false;
     std::scoped_lock lock(runningMutex);
     if (listenSock > 0) closesocket(listenSock);
-    CSPOT_LOG(info, "deleting HTTP streamer %s", streamId.c_str());
+    CSPOT_LOG(info, "deleted HTTP streamer %s", streamId.c_str());
 }
 
 void HTTPstreamer::setContentLength(int64_t contentLength) {
@@ -161,12 +163,6 @@ void HTTPstreamer::getMetadata(metadata_t* metadata) {
     metadata->album = trackInfo.album.c_str();
     metadata->artist = trackInfo.artist.c_str();
     metadata->artwork = trackInfo.imageUrl.c_str();
-}
-
-void HTTPstreamer::teardown() {
-    isRunning = false;
-    std::scoped_lock lock(runningMutex);
-    CSPOT_LOG(info, "HTTP streamer %s stopped", streamId.c_str());
 }
 
 void HTTPstreamer::flush() {
@@ -360,7 +356,7 @@ ssize_t HTTPstreamer::streamBody(int sock, struct timeval& timeout) {
         encoder->drain();
         size = encoder->read(scratch, size);
     }
-    
+
     if (size) {
         int offset = 0;
 
@@ -412,7 +408,7 @@ ssize_t HTTPstreamer::streamBody(int sock, struct timeval& timeout) {
 }
 
 bool HTTPstreamer::feedPCMFrames(const uint8_t* data, size_t size) {
-    return (!isRunning || encoder->pcmWrite(data, size)) ? true : false;
+    return (isRunning && encoder->pcmWrite(data, size)) ? true : false;
 }
 
 std::string HTTPstreamer::getStreamUrl(void) {
@@ -453,7 +449,8 @@ void HTTPstreamer::runTask() {
 
         if (n > 0) {
             success = connect(sock);
-            if (success) state = STREAMING;
+            // we might already be in draining mode
+            if (success && state <= STREAMING) state = STREAMING;
         }
 
         // terminate connection if required by HTTP peer
@@ -467,17 +464,15 @@ void HTTPstreamer::runTask() {
 
         // state is tested twice because streamBody is a call that needs to be made
         if (state >= STREAMING && streamBody(sock, timeout) <= 0 && state == DRAINING) {
-            CSPOT_LOG(info, "HTTP streaming finished for %u", sock);
-            state = DRAINED;
+            CSPOT_LOG(info, "HTTP streaming finished for %u (id: %s)", sock, streamId.c_str());
             // chunked-encoding terminates by a last empty chunk ending sequence
             if (contentLength == HTTP_CL_CHUNKED) send(sock, "0\r\n\r\n", 5, 0);
-
+            flush();
             shutdown(sock, SHUT_RDWR);
             closesocket(sock);
             sock = -1;
-            // let's exit thread, at some point I removed that but I think it was linked 
-            // with SEEK which is now different
-            break;
+            onEoS(isRunning);
+            
         } else {
             timeout.tv_usec = 50 * 1000;
         }

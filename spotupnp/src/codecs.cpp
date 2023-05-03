@@ -331,7 +331,7 @@ uint64_t mp3Codec::initialize(int64_t duration) {
 
     config.wave.samplerate = rate;
     config.wave.channels = PCM_STEREO;
-    config.mpeg.bitr = rate;
+    config.mpeg.bitr = bitrate;
     config.mpeg.mode = STEREO;
     mp3 = shine_initialise(&config);
 

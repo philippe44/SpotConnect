@@ -13,7 +13,7 @@
 #include <functional>
 
 #include "BellTask.h"
-#include "CDNTrackStream.h"
+#include "TrackQueue.h"
 #ifdef _WIN32
 #include "win32shim.h"
 #endif
@@ -22,8 +22,11 @@
 #include "metadata.h"
 #include "codecs.h"
 
+class HTTPStreamer;
+
 typedef std::map<std::string, std::string> HTTPheaders;
 typedef std::function<HTTPheaders(HTTPheaders)> onHeadersHandler;
+typedef std::function<void (std::atomic<bool>& isRunning)> EoSCallback;
 
 /****************************************************************************************
  * Ring buffer (always rolls over)
@@ -72,27 +75,30 @@ private:
     void runTask();
     ssize_t streamBody(int sock, struct timeval& timeout);
     ssize_t sendChunk(int sock, uint8_t* data, ssize_t size);
-    void getMetadata(cspot::CDNTrackStream::TrackInfo& track, metadata_t* metadata);
+    void getMetadata(cspot::TrackInfo& track, metadata_t* metadata);
     onHeadersHandler onHeaders;
+    EoSCallback onEoS;
+
 public:
-    enum states { OFF, CONNECTING, STREAMING, DRAINING, DRAINED };
+    enum states { OFF, CONNECTING, STREAMING, DRAINING };
     std::atomic<states> state = CONNECTING;
     enum syncStates { WAIT_URL, WAIT_TIME, WAIT_SEEKTIME, WAIT_CROSSTIME, AIRED };
     std::atomic<syncStates> sync = WAIT_URL;
     std::string streamId;
-    cspot::CDNTrackStream::TrackInfo trackInfo;
+    cspot::TrackInfo trackInfo;
+    std::string trackUnique;
     int64_t offset;
 
     HTTPstreamer(struct in_addr addr, std::string id, unsigned index, std::string codec, 
                  bool flow, int64_t contentLength, 
-                 cspot::CDNTrackStream::TrackInfo track, int32_t startOffset,
-                 onHeadersHandler onHeaders);
+                 cspot::TrackInfo track, std::string_view trackUnique, int32_t startOffset,
+                 onHeadersHandler onHeaders, EoSCallback onEoS);
     ~HTTPstreamer();
-    void teardown();
     void flush(void);
     bool connect(int sock);
     bool feedPCMFrames(const uint8_t* data, size_t size);
     std::string getStreamUrl(void);
     void getMetadata(metadata_t* metadata);
     void setContentLength(int64_t contentLength);
+    std::string trackId() { return trackInfo.trackId; }
 };
