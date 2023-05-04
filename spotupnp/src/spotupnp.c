@@ -565,7 +565,7 @@ int ActionHandler(Upnp_EventType EventType, const void *Event, void *Cookie) {
 
 					if (p->SpotState == SPOT_PLAY && !p->ExpectStop && p->NextStreamUrl) {
 						metadata_t MetaData = { 0 };
-						if (spotGetMetaData(p->SpotPlayer, p->NextStreamUrl, &MetaData)) {
+						if (spotGetMetaForUrl(p->SpotPlayer, p->NextStreamUrl, &MetaData)) {
 							SetTrackURI(p, false, p->NextStreamUrl, &MetaData);
 							AVTPlay(p);
 						} else {

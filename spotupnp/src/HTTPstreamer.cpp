@@ -471,7 +471,8 @@ void HTTPstreamer::runTask() {
             shutdown(sock, SHUT_RDWR);
             closesocket(sock);
             sock = -1;
-            onEoS(isRunning);
+            state = DRAINED;
+            if (onEoS) onEoS(this);
             
         } else {
             timeout.tv_usec = 50 * 1000;

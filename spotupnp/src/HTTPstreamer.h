@@ -22,11 +22,11 @@
 #include "metadata.h"
 #include "codecs.h"
 
-class HTTPStreamer;
+class HTTPstreamer;
 
 typedef std::map<std::string, std::string> HTTPheaders;
 typedef std::function<HTTPheaders(HTTPheaders)> onHeadersHandler;
-typedef std::function<void (std::atomic<bool>& isRunning)> EoSCallback;
+typedef std::function<void(HTTPstreamer *self)> EoSCallback;
 
 /****************************************************************************************
  * Ring buffer (always rolls over)
@@ -80,10 +80,8 @@ private:
     EoSCallback onEoS;
 
 public:
-    enum states { OFF, CONNECTING, STREAMING, DRAINING };
+    enum states { OFF, CONNECTING, STREAMING, DRAINING, DRAINED };
     std::atomic<states> state = CONNECTING;
-    enum syncStates { WAIT_URL, WAIT_TIME, WAIT_SEEKTIME, WAIT_CROSSTIME, AIRED };
-    std::atomic<syncStates> sync = WAIT_URL;
     std::string streamId;
     cspot::TrackInfo trackInfo;
     std::string trackUnique;

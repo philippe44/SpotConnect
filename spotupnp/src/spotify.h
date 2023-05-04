@@ -39,7 +39,7 @@ void				   shadowRequest(struct shadowPlayer* shadow, enum spotEvent event, ...)
 struct spotPlayer* spotCreatePlayer(char* name, char* id, struct in_addr addr, int audio, char *codec, bool flow, 
 								    int64_t contentLength, struct shadowPlayer* shadow, pthread_mutex_t *mutex);
 void spotDeletePlayer(struct spotPlayer *spotPlayer);
-bool spotGetMetaData(struct spotPlayer* spotPlayer, const char* streamUrl, metadata_t* metadata);
+bool spotGetMetaForUrl(struct spotPlayer* spotPlayer, const char* url, metadata_t* metadata);
 void spotOpen(uint16_t portBase, uint16_t portRange);
 void spotClose(void);
 void spotNotify(struct spotPlayer* spotPlayer, enum shadowEvent event, ...);
