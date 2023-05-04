@@ -49,6 +49,7 @@ private:
 public:
     shadowMutex(pthread_mutex_t* mutex) : mutex(mutex) { }
     void lock() { pthread_mutex_lock(mutex); }
+    void trylock() { pthread_mutex_trylock(mutex); }
     void unlock() { pthread_mutex_unlock(mutex); }
 };
 
@@ -84,7 +85,7 @@ private:
     std::unique_ptr<bell::MDNSService> mdnsService;
 
     // vector would be enough but it does not seem to be any faster than deque
-    std::deque<std::shared_ptr<HTTPstreamer>> streamers;
+    std::deque<std::shared_ptr<HTTPstreamer>> streamers, drained;
     std::shared_ptr<HTTPstreamer> player;
     shadowMutex playerMutex;
 
@@ -106,7 +107,6 @@ public:
         int64_t contentLength, struct shadowPlayer* shadow, pthread_mutex_t* mutex);
     ~CSpotPlayer();
     std::atomic<bool> isRunning = false;
-    void teardown();
     void disconnect();
     bool getMetaForUrl(const char* StreamUrl, metadata_t* metadata);
     void notify(enum shadowEvent event, va_list args);
@@ -121,6 +121,22 @@ CSpotPlayer::CSpotPlayer(char* name, char* id, struct in_addr addr, AudioFormat 
 }
 
 CSpotPlayer::~CSpotPlayer() {
+    // need to cleanup everything before isConnected is set to false
+    streamers.clear();
+    drained.clear();
+    player.reset();
+
+    isRunning = isConnected = false;
+
+    // unlock ourselves as we are waiting
+    clientConnected.give();
+
+    // manually unregister mDNS but all other item should be deleted automatically
+    mdnsService->unregisterService();
+
+    // then just wait
+    std::scoped_lock lock(this->runningMutex);
+    CSPOT_LOG(info, "Player %s fully stopped", name.c_str());
 }
 
 size_t CSpotPlayer::writePCM(uint8_t* data, size_t bytes, std::string_view trackUnique) {
@@ -136,45 +152,25 @@ size_t CSpotPlayer::writePCM(uint8_t* data, size_t bytes, std::string_view track
 }
 
 void CSpotPlayer::streamerEoS(std::atomic<bool>& isRunning) {
-    /* we can only do next URI here and no in SHADOW_TRACK because we would otherwise
-     * create a race condition to call shadow() in a notify() callback. Still, all data 
-     * might be streamed out before playback has begun, so we must wait for a player to
-     * be assigned and if we are not running anymore, it means that our track's URL has 
-     * never been seen so we should just exit. Another stream will do the next URI, but 
-     * it cannot be us */
+    std::lock_guard lock(playerMutex);
 
-    while (isRunning) {
-        playerMutex.lock();
-        auto streamer = streamers.back();
+    // move the streamed out one to the drained queue and get next one
+    drained.push_front(streamers.back());
+    streamers.pop_back();
 
-        // the track we are removing must be in the player (at least we should not remove self)
-        if (!player || player != streamer) {
-            playerMutex.unlock();
-            CSPOT_LOG(info, "waiting for track s:%s p:%s", streamer->streamId.c_str(), player->streamId.c_str());
-            BELL_SLEEP_MS(100);
-            continue;
-        } 
+    // might be last track
+    if (streamers.empty()) return;
 
-        CSPOT_LOG(info, "removing s:%s (%d streamers)", streamers.back()->streamId.c_str(), streamers.size());
+    // we can safely do a LOAD
+    auto streamer = streamers.back();
+    CSPOT_LOG(info, "loading by EoS of %s", streamer->streamId.c_str());
+    metadata_t metadata = { 0 };
+    streamer->getMetadata(&metadata);
+    metadata.duration = flow ? 0 : (metadata.duration + streamer->offset);
+    shadowRequest(shadow, SPOT_LOAD, streamer->getStreamUrl().c_str(), &metadata, (uint32_t)-streamer->offset);
 
-        // now extract the track (there is one)
-        streamers.pop_back();
-
-        // might be the last track
-        if (!streamers.empty()) {
-            streamer = streamers.back();
-            metadata_t metadata = { 0 };
-            streamer->getMetadata(&metadata);
-            metadata.duration = flow ? 0 : (metadata.duration + streamer->offset);
-            shadowRequest(shadow, SPOT_LOAD, streamer->getStreamUrl().c_str(), &metadata, (uint32_t)-streamer->offset);
-
-            // play only if needed
-            if (!isPaused) shadowRequest(shadow, SPOT_PLAY);
-        }
-
-        playerMutex.unlock();
-        break;
-    }
+    // play only if needed
+    if (!isPaused) shadowRequest(shadow, SPOT_PLAY);
 }
 
 auto CSpotPlayer::postHandler(struct mg_connection* conn) {
@@ -248,7 +244,7 @@ void CSpotPlayer::trackHandler(std::string_view trackUnique) {
                                                             return this->streamerEoS(isRunning);
                                                         });
 
-        CSPOT_LOG(info, "will be streamed as %s", streamer->streamId.c_str());
+        CSPOT_LOG(info, "streamId is %s", streamer->streamId.c_str());
 
         // start UPnP if there is no more than one streamer (track detection will do otherwise)
         if (streamers.empty()) {
@@ -258,7 +254,7 @@ void CSpotPlayer::trackHandler(std::string_view trackUnique) {
             metadata.duration += streamer->offset;
 
             // position is optional, shadow player might use it or not
-            CSPOT_LOG(info, "immediate LOAD");
+            CSPOT_LOG(info, "loading immediately");
             shadowRequest(shadow, SPOT_LOAD, streamer->getStreamUrl().c_str(), &metadata, (uint32_t)-streamer->offset);
 
             // play unless already paused
@@ -300,13 +296,14 @@ void CSpotPlayer::flowSync(cspot::TrackInfo *trackInfo) {
 
         // memorize position for when track's beginning will be detected
         startOffset = std::get<int>(event->data);
-        lastPosition = 0;
-        streamTrackUnique.clear();
         flowTrackInfo.reset();
         CSPOT_LOG(info, "track started at %d", startOffset);
 
-        // remove all streamers (shared_ptr's destructor will stop the tasks)
+        // clean slate => wipe-out all queues and pointers
+        lastPosition = 0;
+        streamTrackUnique.clear();
         streamers.clear();
+        drained.clear();
         player.reset();
 
         // Spotify servers do not send volume at connection
@@ -329,8 +326,6 @@ void CSpotPlayer::flowSync(cspot::TrackInfo *trackInfo) {
         // send when there is no next, just stop
         CSPOT_LOG(info, "next/prev");
         shadowRequest(shadow, SPOT_STOP);
-        streamers.clear();
-        streamTrackUnique.clear();
         break;
     }
     case cspot::SpircHandler::EventType::DISC:
@@ -340,7 +335,7 @@ void CSpotPlayer::flowSync(cspot::TrackInfo *trackInfo) {
         /* Seek does not exist for shadow's player but we need to keep the current streamer. So
          * stop that should close the current connection and PLAY should open a new one, all on 
          * the same url/streamer */
-        std::scoped_lock lock(playerMutex);
+        std::lock_guard lock(playerMutex);
 
         if (!player && streamers.empty()) {
             CSPOT_LOG(info, "pressing next to quickly, really...");
@@ -459,13 +454,20 @@ void CSpotPlayer::notify(enum shadowEvent event, va_list args) {
         // nothing to do if we are already the active player
         if (player && player->getStreamUrl() == url) return;    
 
-        // remove all pending streamers that do not match url (should be none)
-        while (!streamers.empty() && streamers.back()->getStreamUrl() != url) streamers.pop_back();      
-        if (streamers.empty()) return;
+        // the url might be already drained, otherwise it shoudl be first streamer
+        if (!drained.empty() && drained.back()->getStreamUrl() == url) {
+            player = drained.back();
+        } else {
+            // remove all pending streamers that do not match url (should be none)
+            while (streamers.back()->getStreamUrl() != url) streamers.pop_back();
+            player = streamers.back();
+        }
 
-        player = streamers.back();
+        // all drained streamers can now be deleted
+        drained.clear();
+
+        // finally, get ready for time position and inform spotify that we are playing
         lastPosition = 0;
-
         spirc->notifyAudioReachedPlayback();
 
         CSPOT_LOG(info, "track %s started by URL", player->streamId.c_str());
@@ -491,29 +493,13 @@ void CSpotPlayer::notify(enum shadowEvent event, va_list args) {
     }
 }
 
-void CSpotPlayer::teardown() {
-    isRunning = false;
-
-    // unlock ourselves as we are waiting
-    clientConnected.give();
-
-    // stop all streamers (shared_ptr's destructor will be called)
-    streamers.clear();
-    player.reset();
-    mdnsService->unregisterService();
-
-    // then just wait    
-    std::scoped_lock lock(this->runningMutex);
-
-    CSPOT_LOG(info, "Player %s fully stopped", name.c_str());
-}
-
 void CSpotPlayer::disconnect() {
+    // playerMutex is already locked
     CSPOT_LOG(info, "Disconnecting %s", name.c_str());
     isConnected = false;
-    std::scoped_lock lock(playerMutex);
     shadowRequest(shadow, SPOT_STOP);
     streamers.clear();
+    drained.clear();
     player.reset();
 }
 
@@ -620,6 +606,7 @@ void CSpotPlayer::runTask() {
         }
     }
 
+    printf("P-4\n");
     CSPOT_LOG(info, "Terminating player %s", name.c_str());
 }
 
@@ -657,7 +644,6 @@ struct spotPlayer* spotCreatePlayer(char* name, char *id, struct in_addr addr, i
 
 void spotDeletePlayer(struct spotPlayer* spotPlayer) {
     auto player = (CSpotPlayer*) spotPlayer;
-    player->teardown();
     delete player;
 }
 
