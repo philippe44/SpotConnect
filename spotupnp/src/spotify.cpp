@@ -137,8 +137,9 @@ size_t CSpotPlayer::writePCM(uint8_t* data, size_t bytes, std::string_view track
     std::lock_guard lock(playerMutex);
 
     if (streamTrackUnique != trackUnique) {
-        // We can't accept more than 2 tracks, come back later
-        if (streamers.size() > 1) return 0;
+        // safely pop drained players, otherwise only accept 2 players
+        if (player && player->state == HTTPstreamer::DRAINED) streamers.pop_back();
+        else if (streamers.size() > 1) return 0;
 
         CSPOT_LOG(info, "trackUniqueId update %s => %s", streamTrackUnique.c_str(), trackUnique.data());
         streamTrackUnique = trackUnique;
@@ -423,14 +424,11 @@ void notify(CSpotPlayer *self, enum shadowEvent event, va_list args) {
         char* url = va_arg(args, char*);
 
         // nothing to do if we are already the active player
-        if (self->player && self->player->getStreamUrl() == url) return;    
+        if (self->streamers.empty() || (self->player && self->player->getStreamUrl() == url)) return;    
 
         // remove all pending streamers that do not match url (should be none)
         while (self->streamers.back()->getStreamUrl() != url) self->streamers.pop_back();
-
-        // only pop a streamer if we already have a player (initial conditions)
         self->player = self->streamers.back();
-        if (self->player->state == HTTPstreamer::DRAINED) self->streamers.pop_back();
 
         // finally, get ready for time position and inform spotify that we are playing
         self->lastPosition = 0;
@@ -446,11 +444,12 @@ void notify(CSpotPlayer *self, enum shadowEvent event, va_list args) {
         self->spirc->setPause(true);
         break;
     case SHADOW_STOP:
-        if (self->streamers.empty()) {
-            // otherwise it means we have finished playing
+        if (self->player->state == HTTPstreamer::DRAINED) {
+            // we have finished playing
             self->spirc->setPause(true);
+            self->spirc->updatePositionMs(0);
         } else {
-            // a non expected STOP is a disconnect, it frees up player from Spotify
+            // disconnect on unexpected STOP (free up player from Spotify)
             self->disconnect();
         }
         break;

@@ -145,7 +145,7 @@ HTTPstreamer::~HTTPstreamer() {
     isRunning = false;
     std::scoped_lock lock(runningMutex);
     if (listenSock > 0) closesocket(listenSock);
-    CSPOT_LOG(info, "deleted HTTP streamer %s", streamId.c_str());
+    CSPOT_LOG(info, "HTTP streamer %s deleted", streamId.c_str());
 }
 
 void HTTPstreamer::setContentLength(int64_t contentLength) {
