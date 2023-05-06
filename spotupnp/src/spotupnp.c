@@ -632,9 +632,8 @@ int ActionHandler(Upnp_EventType EventType, const void *Event, void *Cookie) {
 						p->Elapsed = Elapsed;
 					}
 
-					// @FIXME: some player seems to send previous' track position (WX) or even backward 
-					// position, need to find a ay to fix this, but using Elapsed > p->Elapsed is not
-					// a solution as p->Elapsed is reset at LOAD
+					/* Some player seems to send previous' track position (WX) or even backward 
+					 * position so the callee cannot really on just one call */
 					spotNotify(p->SpotPlayer, SHADOW_TIME, (Elapsed + p->ElapsedOffset) * 1000);
 					p->Elapsed = Elapsed;
 

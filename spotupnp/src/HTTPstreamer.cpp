@@ -106,7 +106,7 @@ HTTPstreamer::HTTPstreamer(struct in_addr addr, std::string id, unsigned index, 
         encoder = std::make_unique<pcmCodec>();
     } else if (codec.find("wav") != std::string::npos) {
         encoder = std::make_unique<wavCodec>();
-    } else if (codec.find("flac") != std::string::npos) {
+    } else if (codec.find("flac") != std::string::npos || codec.find("flc") != std::string::npos) {
         int level = 5;
         sscanf(codec.c_str(), "%*[^:]:%d", &level);
         encoder = std::make_unique<flacCodec>(level);
@@ -169,6 +169,7 @@ void HTTPstreamer::flush() {
     state = OFF;
     cache.flush();
     encoder->flush();
+    icy.trackId.clear();
 }
 
 bool HTTPstreamer::connect(int sock) {
