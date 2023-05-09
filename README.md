@@ -5,7 +5,7 @@ SpotConnect can run on any machine that has access to your local network (Window
 
 For UPnP, the audio, after being decoded from vorbis, can be sent in plain, or re-encoded using mp3 or flac. The tracks can be sent one-by one and use the capability of UPnP players to do gapless playback by sending the next track ahead of the current one, but not all players support that or might simply be faulty. There is also a 'flow' mode where all tracks are sent in a continuous stream, similar to a webradio. Note that this mode can be brittle with regard to track position. In 'flow' mode, metadata are likely not to be sent, unlesss player supports 'icy' protocol.
 
-For AirPlay, the audio can be re-encoded using ALAC or left as raw PCM.
+For AirPlay, the audio can be re-encoded using ALAC or left as raw PCM. Note that bridging also works with AppleTV, but you need to create a pairing key. This is done by launching the application with the `-l` option and following instructions. Note that a config file is automatically written and will be required for further use. For software-based AirPlay emulators like most cheap knock-off, encryption is required (see below) 
 
 ## Installing
 
@@ -80,6 +80,7 @@ The default configuration file is `config.xml`, stored in the same directory as 
 
 ### AirPlay
 - `codec alac|pcm`: format used to send audio
+- `encryption <0|1>`: most software-based player and cheap knock-off require encryption to be activated otherwise they won't stream.
 
 These are the global parameters
 
