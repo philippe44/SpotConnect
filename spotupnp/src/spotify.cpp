@@ -385,7 +385,7 @@ void notify(CSpotPlayer *self, enum shadowEvent event, va_list args) {
                             self->player->offset);
 
             // to avoid getting time twice when starting from 0
-            self->lastPosition = position + 1;
+            self->lastPosition = position | 0x01;
             position -= self->player->offset;
             self->spirc->updatePositionMs(position);
         } else {

@@ -138,7 +138,6 @@ endif()
 target_include_directories(${PROJECT} PRIVATE "." ${EXTRA_INCLUDES})
 target_compile_definitions(${PROJECT} PRIVATE -DUPNP_STATIC_LIB -D_GNU_SOURCE -DUSE_SSL)
 target_link_libraries(${PROJECT} PUBLIC cspot ${EXTRA_LIBS})
-target_link_libraries(${PROJECT} PRIVATE ${BASE}/spotraop/libopenssl/targets/${HOST}/${PLATFORM}/libopenssl${LIBRARY_SUFFIX})
 
 # Configure the targets
 if(NOT APPLE AND NOT CMAKE_SYSTEM_NAME STREQUAL "SunOS")

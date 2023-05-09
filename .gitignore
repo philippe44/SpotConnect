@@ -25,6 +25,7 @@
 *.la
 *.a
 *.lib
+config.xml
 
 # Executables
 *.out
