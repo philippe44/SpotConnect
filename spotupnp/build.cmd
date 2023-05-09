@@ -18,7 +18,6 @@ if not exist %build% (
 )
 
 msbuild "spotupnp.sln" -p:Configuration=Release -p:Platform=Win32 %option%
-
 robocopy Release %pwd%\bin *.exe /NDL /NJH /NJS /nc /ns /np
 
 endlocal

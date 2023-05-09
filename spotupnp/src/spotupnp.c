@@ -293,102 +293,107 @@ void shadowRequest(struct shadowPlayer *shadow, enum spotEvent event, ...) {
 	va_list args;
 	va_start(args, event);
 
-	// this is async, so need to check context validity
-	if (!CheckAndLock(Device)) return;
+	// try to lock in case caller did not lock it
+	int locked = pthread_mutex_trylock(&Device->Mutex);
+
+	if (!Device->Running) {
+		if (!locked) pthread_mutex_unlock(&Device->Mutex);
+		return;
+	}
 
 	switch (event) {
-		case SPOT_STOP:
-			LOG_INFO("[%p]: Stop", Device);
-			if (Device->SpotState != SPOT_STOP) {
-				AVTStop(Device);
-				Device->ExpectStop = true;
-			}
-			Device->SpotState = SPOT_STOP;
-			break;
-		case SPOT_LOAD: {
-			char* StreamUrl = va_arg(args, char*);
-			metadata_t* MetaData;
-
-			if (Device->Config.Flow) MetaData = &Device->MetaData;
-			else MetaData = va_arg(args, metadata_t*);
+	case SPOT_STOP:
+		LOG_INFO("[%p]: Stop", Device);
+		if (Device->SpotState != SPOT_STOP) {
+			AVTStop(Device);
+			Device->ExpectStop = true;
+		}
+		Device->SpotState = SPOT_STOP;
+		break;
+	case SPOT_LOAD: {
+		char* StreamUrl = va_arg(args, char*);
+		metadata_t* MetaData;
+		
+		if (Device->Config.Flow) MetaData = &Device->MetaData;
+		else MetaData = va_arg(args, metadata_t*);
 			
-			// reset these counters to avoid false rollover
-			Device->Elapsed = Device->ElapsedOffset = 0;
+		// reset these counters to avoid false rollover
+		Device->Elapsed = Device->ElapsedOffset = 0;
 
-			LOG_INFO("[%p]: spotify LOAD request", Device);
+		LOG_INFO("[%p]: spotify LOAD request", Device);
 
-			if (Device->SpotState != SPOT_PLAY || Device->Gapless) {
-				SetTrackURI(Device, Device->SpotState == SPOT_PLAY, StreamUrl, MetaData);
-			} else {
-				NFREE(Device->NextStreamUrl);
-				Device->NextStreamUrl = strdup(StreamUrl);
-				LOG_INFO("[%p]: Gapped next track %s", Device, Device->NextStreamUrl);
-			}
-			break;
-		}	
-		case SPOT_PLAY: {
-			// can't play until we are loaded or paused
-			if (Device->SpotState == SPOT_PLAY) break;
-			LOG_INFO("[%p]: spotify play request", Device);
-			if (Device->State != PLAYING || Device->ExpectStop) AVTPlay(Device);
-			// should we set volume?
-			Device->SpotState = SPOT_PLAY;
-			Device->ExpectStop = false;
-			break;
+		if (Device->SpotState != SPOT_PLAY || Device->Gapless) {
+			SetTrackURI(Device, Device->SpotState == SPOT_PLAY, StreamUrl, MetaData);
+		} else {
+			NFREE(Device->NextStreamUrl);
+			Device->NextStreamUrl = strdup(StreamUrl);
+			LOG_INFO("[%p]: Gapped next track %s", Device, Device->NextStreamUrl);
 		}
-		case SPOT_PAUSE:
-			if (Device->SpotState == SPOT_PAUSE) break;
-			LOG_INFO("[%p]: spotify pause request", Device);
-			if (Device->State != PAUSED || Device->ExpectStop) AVTBasic(Device, "Pause");
-			Device->SpotState = event;
-			break;
-		case SPOT_VOLUME: {
-			// discard echo commands
-			uint32_t now = gettime_ms();
-			if (now < Device->VolumeStampRx + 1000) break;
-			Device->VolumeStampTx = now;
+		break;
+	}	
+	case SPOT_PLAY: {
+		// can't play until we are loaded or paused
+		if (Device->SpotState == SPOT_PLAY) break;
+		LOG_INFO("[%p]: spotify play request", Device);
+		if (Device->State != PLAYING || Device->ExpectStop) AVTPlay(Device);
+		// should we set volume?
+		Device->SpotState = SPOT_PLAY;
+		Device->ExpectStop = false;
+		break;
+	}
+	case SPOT_PAUSE:
+		if (Device->SpotState == SPOT_PAUSE) break;
+		LOG_INFO("[%p]: spotify pause request", Device);
+		if (Device->State != PAUSED || Device->ExpectStop) AVTBasic(Device, "Pause");
+		Device->SpotState = event;
+		break;
+	case SPOT_VOLUME: {
+		// discard echo commands
+		uint32_t now = gettime_ms();
+		if (now < Device->VolumeStampRx + 1000) break;
+		Device->VolumeStampTx = now;
 
-			// Volume is normalized 0..1
-			double Volume = va_arg(args, int) / (double) UINT16_MAX;
-			int GroupVolume;
+		// Volume is normalized 0..1
+		double Volume = va_arg(args, int) / (double) UINT16_MAX;
+		int GroupVolume;
 
-			// Sonos group volume API is unreliable, need to create our own
-			GroupVolume = CalcGroupVolume(Device);
+		// Sonos group volume API is unreliable, need to create our own
+		GroupVolume = CalcGroupVolume(Device);
 
-			/* Volume is kept as a double in device's context to avoid relative
-			values going to 0 and being stuck there. This works because although
-			volume is echoed from UPnP event as an integer, timing check allows
-			that echo to be discarded, so until volume is changed locally, it
-			remains a floating value which will regrow from being < 1 */
+		/* Volume is kept as a double in device's context to avoid relative values going 
+		 * to 0 and being stuck there. This works because although volume is echoed from 
+		 * UPnP event as an integer, timing check allows that echo to be discarded, so 
+		 * until volume is changed locally, it remains a floating value which will regrow 
+		 * from being < 1 */
 
-			if (GroupVolume < 0) {
-				Device->Volume = Volume * Device->Config.MaxVolume;
-				CtrlSetVolume(Device, Device->Volume + 0.5, Device->seqN++);
-				LOG_INFO("[%p]: Volume[0..100] %d", Device, (int) Device->Volume);
-			} else {
-				double Ratio = GroupVolume ? (Volume * Device->Config.MaxVolume) / GroupVolume : 0;
+		if (GroupVolume < 0) {
+			Device->Volume = Volume * Device->Config.MaxVolume;
+			CtrlSetVolume(Device, Device->Volume + 0.5, Device->seqN++);
+			LOG_INFO("[%p]: Volume[0..100] %d", Device, (int) Device->Volume);
+		} else {
+			double Ratio = GroupVolume ? (Volume * Device->Config.MaxVolume) / GroupVolume : 0;
+			
+			// set volume for all devices
+			for (int i = 0; i < glMaxDevices; i++) {
+				struct sMR *p = glMRDevices + i;
+				if (!p->Running || (p != Device && p->Master != Device)) continue;
 
-				// set volume for all devices
-				for (int i = 0; i < glMaxDevices; i++) {
-					struct sMR *p = glMRDevices + i;
-					if (!p->Running || (p != Device && p->Master != Device)) continue;
-
-					// for standalone master, GroupVolume & Volume are identical
-					if (GroupVolume) p->Volume = min(p->Volume * Ratio, p->Config.MaxVolume);
-					else p->Volume = Volume * p->Config.MaxVolume;
-
-					CtrlSetVolume(p, p->Volume + 0.5, p->seqN++);
-					LOG_INFO("[%p]: Volume[0..100] %d:%d", p, (int) p->Volume, GroupVolume);
-				}
+				// for standalone master, GroupVolume & Volume are identical
+				if (GroupVolume) p->Volume = min(p->Volume * Ratio, p->Config.MaxVolume);
+				else p->Volume = Volume * p->Config.MaxVolume;
+				
+				CtrlSetVolume(p, p->Volume + 0.5, p->seqN++);
+				LOG_INFO("[%p]: Volume[0..100] %d:%d", p, (int) p->Volume, GroupVolume);
 			}
-			break;
 		}
-		default:
-			break;
+		break;
+	}
+	default:
+		break;
 	}
 
 	va_end(args);
-	pthread_mutex_unlock(&Device->Mutex);
+	if (!locked) pthread_mutex_unlock(&Device->Mutex);
 }
 
 /*----------------------------------------------------------------------------*/
@@ -506,8 +511,7 @@ uint64_t ConvertTime(char* time) {
 int ActionHandler(Upnp_EventType EventType, const void *Event, void *Cookie) {
 	static int recurse = 0;
 	struct sMR *p = NULL;
-	enum shadowEvent ShadowEvent = SHADOW_NONE;
-
+	
 	LOG_SDEBUG("action: %i [%s] [%p] [%u]", EventType, uPNPEvent2String(EventType), Cookie, recurse);
 	recurse++;
 
@@ -561,16 +565,16 @@ int ActionHandler(Upnp_EventType EventType, const void *Event, void *Cookie) {
 
 					if (p->SpotState == SPOT_PLAY && !p->ExpectStop && p->NextStreamUrl) {
 						metadata_t MetaData = { 0 };
-						if (spotGetMetaData(p->SpotPlayer, p->NextStreamUrl, &MetaData)) {
+						if (spotGetMetaForUrl(p->SpotPlayer, p->NextStreamUrl, &MetaData)) {
 							SetTrackURI(p, false, p->NextStreamUrl, &MetaData);
 							AVTPlay(p);
 						} else {
-							ShadowEvent = SHADOW_STOP;
+							spotNotify(p->SpotPlayer, SHADOW_STOP);
 						}
 						NFREE(p->NextStreamUrl);
 					} else if (p->SpotState != SPOT_STOP && p->SpotState != SPOT_PAUSE) {
 						// some players (Sonos again...) report a STOPPED state when pause *only* with mp3
-						ShadowEvent = SHADOW_STOP;
+						spotNotify(p->SpotPlayer, SHADOW_STOP);
 					}
 
 					p->State = STOPPED;
@@ -578,11 +582,11 @@ int ActionHandler(Upnp_EventType EventType, const void *Event, void *Cookie) {
 				} else if (!strcmp(r, "PLAYING") && (p->State != PLAYING)) {
 					p->State = PLAYING;
 					LOG_INFO("[%p]: uPNP playing", p);
-					if (p->SpotState != SPOT_PLAY) ShadowEvent = SHADOW_PLAY;
+					if (p->SpotState != SPOT_PLAY) spotNotify(p->SpotPlayer, SHADOW_PLAY);
 				} else if (!strcmp(r, "PAUSED_PLAYBACK") && p->State != PAUSED) {
 					p->State = PAUSED;
 					LOG_INFO("[%p]: uPNP pause", p);
-					if (p->SpotState == SPOT_PLAY) ShadowEvent = SHADOW_PAUSE;
+					if (p->SpotState == SPOT_PLAY) spotNotify(p->SpotPlayer, SHADOW_PAUSE);
 				}
 
 				free(r);
@@ -612,7 +616,6 @@ int ActionHandler(Upnp_EventType EventType, const void *Event, void *Cookie) {
 							p->TrackURI[sizeof(p->TrackURI) - 1] = '\0';
 							p->ElapsedOffset = 0;
 						}
-						// this is a safe call
 						spotNotify(p->SpotPlayer, SHADOW_TRACK, r + p->PrefixLength);
 						free(r);
 					}
@@ -629,20 +632,10 @@ int ActionHandler(Upnp_EventType EventType, const void *Event, void *Cookie) {
 						p->Elapsed = Elapsed;
 					}
 
-					/*
-					static int LastElapsed = 0;
-					if (Elapsed > LastElapsed + 10 || Elapsed + 10 < LastElapsed) {
-						LOG_INFO("elapsed %d", Elapsed + p->ElapsedOffset);
-						LastElapsed = Elapsed;
-					}
-					*/
-
-					// they can also send some backward position (unless it's an UPnP issue)
-					if (Elapsed > p->Elapsed) {
-						// this is a safe call
-						spotNotify(p->SpotPlayer, SHADOW_TIME, (Elapsed + p->ElapsedOffset) * 1000);
-						p->Elapsed = Elapsed;
-					}
+					/* Some player seems to send previous' track position (WX) or even backward 
+					 * position so the callee cannot really on just one call */
+					spotNotify(p->SpotPlayer, SHADOW_TIME, (Elapsed + p->ElapsedOffset) * 1000);
+					p->Elapsed = Elapsed;
 
 					free(r);
 				}
@@ -663,12 +656,7 @@ int ActionHandler(Upnp_EventType EventType, const void *Event, void *Cookie) {
 			break;
 	}
 
-	if (p) {
-		pthread_mutex_unlock(&p->Mutex);
-		// this is awful but some event (STOP, PLAY...) create a deadlock issue with spotNotify generated callbacks
-		if (ShadowEvent) spotNotify(p->SpotPlayer, ShadowEvent);
-    }
-
+	if (p) pthread_mutex_unlock(&p->Mutex);
 	recurse--;
 
 	return 0;
@@ -891,7 +879,8 @@ static void *UpdateThread(void *args) {
 							char id[6 * 2 + 1] = { 0 };
 							for (int i = 0; i < 6; i++) sprintf(id + i * 2, "%02x", Device->Config.mac[i]);
 							Device->SpotPlayer = spotCreatePlayer(Device->Config.Name, id, glHost, Device->Config.VorbisRate, Device->Config.Codec, 
-																  Device->Config.Flow, Device->Config.HTTPContentLength, (struct shadowPlayer*) Device);
+																  Device->Config.Flow, Device->Config.HTTPContentLength, 
+																  (struct shadowPlayer*) Device, &Device->Mutex);
 							pthread_mutex_unlock(&Device->Mutex);
 						} else if (Master && (!Device->Master || Device->Master == Device)) {
 							pthread_mutex_lock(&Device->Mutex);
@@ -947,7 +936,8 @@ static void *UpdateThread(void *args) {
 					char id[6*2+1] = { 0 };
 					for (int i = 0; i < 6; i++) sprintf(id + i*2, "%02x", Device->Config.mac[i]);
 					Device->SpotPlayer = spotCreatePlayer(Device->Config.Name, id, glHost, Device->Config.VorbisRate, Device->Config.Codec, 
-														  Device->Config.Flow, Device->Config.HTTPContentLength, (struct shadowPlayer*) Device);
+														  Device->Config.Flow, Device->Config.HTTPContentLength, 
+														  (struct shadowPlayer*) Device, &Device->Mutex);
 					if (!Device->SpotPlayer) {
 						LOG_ERROR("[%p]: cannot create Spotify instance (%s)", Device, Device->Config.Name);
 						DelMRDevice(Device);

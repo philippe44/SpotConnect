@@ -54,7 +54,7 @@ enum { VOLUME_FEEDBACK = 1, VOLUME_UNFILTERED = 2};
 /* globals 																	  */
 /*----------------------------------------------------------------------------*/
 int32_t				glLogLimit = -1;
-uint32_t			glMask;
+uint32_t			glNetmask;
 uint16_t			glPortBase, glPortRange;
 char 				glInterface[128] = "?";
 char				glExcludedModels[STR_LEN] = "aircast,airupnp,shairtunes2,airesp32,";
@@ -113,6 +113,7 @@ static pthread_t			glActiveRemoteThread;
 static void					*glConfigID = NULL;
 static char					glConfigName[STR_LEN] = "./config.xml";
 static struct in_addr 		glHost;
+static bool					glPairing;
 static char usage[] =
 
 		VERSION "\n"
@@ -126,6 +127,7 @@ static char usage[] =
 		"  -i <config file>\tdiscover players, save <config file> and exit\n"
 		"  -I \t\t\tauto save config at every network scan\n"
 		"  -f <logfile>\t\twrite debug to logfile\n"
+		"  -l \t\t\tperform AppleTV pairing\n"
 		"  -p <pid file>\t\twrite PID in file\n"
 		"  -m <n1,n2...>\t\texclude devices whose model include tokens\n"
 		"  -n <m1,m2,...>\texclude devices whose name includes tokens\n"
@@ -291,22 +293,42 @@ static void* GetArtworkThread(void *arg) {
 }
 
 /*----------------------------------------------------------------------------*/
-char *GetmDNSAttribute(mdnssd_txt_attr_t *p, int count, char *name) {
+static char *GetmDNSAttribute(mdnssd_txt_attr_t *p, int count, char *name) {
 	for (int i = 0; i < count; i++)	if (!strcasecmp(p[i].name, name))return strdup(p[i].value);
 	return NULL;
 }
 
 /*----------------------------------------------------------------------------*/
-struct sMR *SearchUDN(char *UDN) {
+static struct sMR *SearchUDN(char *UDN) {
 	for (int i = 0; i < MAX_RENDERERS; i++) if (glMRDevices[i].Running && !strcmp(glMRDevices[i].UDN, UDN))	return glMRDevices + i;
 	return NULL;
 }
 
 /*----------------------------------------------------------------------------*/
-bool mDNSsearchCallback(mdnssd_service_t *slist, void *cookie, bool *stop) {
+static void UpdateDevices() {
+	uint32_t now = gettime_ms();
+
+	pthread_mutex_lock(&glMainMutex);
+
+	// walk through the list for device whose timeout expired
+	for (int i = 0; i < MAX_RENDERERS; i++) {
+		struct sMR* Device = Device = glMRDevices + i;
+		if (!Device->Running || Device->Config.RemoveTimeout <= 0 || !Device->Expired || now < Device->Expired + Device->Config.RemoveTimeout * 1000) continue;
+
+		LOG_INFO("[%p]: removing renderer (%s) on timeout", Device, Device->FriendlyName);
+		spotDeletePlayer(Device->SpotPlayer);
+		DelRaopDevice(Device);
+	}
+
+	pthread_mutex_unlock(&glMainMutex);
+}
+
+/*----------------------------------------------------------------------------*/
+static bool mDNSsearchCallback(mdnssd_service_t *slist, void *cookie, bool *stop) {
 	struct sMR *Device;
 	mdnssd_service_t *s;
 	uint32_t now = gettime_ms();
+	bool Updated = false;
 
 	for (s = slist; s && glMainRunning; s = s->next) {
 		char *am = GetmDNSAttribute(s->attr, s->attr_count, "am");
@@ -314,7 +336,7 @@ bool mDNSsearchCallback(mdnssd_service_t *slist, void *cookie, bool *stop) {
 		NFREE(am);
 
 		// ignore excluded and announces made on behalf
-		if (!s->name || excluded || (s->host.s_addr != s->addr.s_addr && ((s->host.s_addr & glMask) == (s->addr.s_addr & glMask)))) continue;
+		if (!s->name || excluded || (s->host.s_addr != s->addr.s_addr && ((s->host.s_addr & glNetmask) == (s->addr.s_addr & glNetmask)))) continue;
 
 		// is that device already here
 		if ((Device = SearchUDN(s->name)) != NULL) {
@@ -334,13 +356,6 @@ bool mDNSsearchCallback(mdnssd_service_t *slist, void *cookie, bool *stop) {
 				LOG_INFO("[%p]: changed ip:port %s:%d", Device, inet_ntoa(s->addr), s->port);
 				Device->PlayerPort = s->port;
 				Device->PlayerIP = s->addr;
-
-				// replace ip:port piece of credentials
-				if (*Device->Config.Credentials) {
-					char *token = strchr(Device->Config.Credentials, '@');
-					if (token) *token = '\0';
-					sprintf(Device->Config.Credentials + strlen(Device->Config.Credentials), "@%s:%d", inet_ntoa(s->addr), s->port);
-				}
 			}
 			continue;
 		}
@@ -369,28 +384,22 @@ bool mDNSsearchCallback(mdnssd_service_t *slist, void *cookie, bool *stop) {
 			// create a new spotify device
 			char id[6 * 2 + 1] = { 0 };
 			for (int i = 0; i < 6; i++) sprintf(id + i * 2, "%02x", Device->Config.MAC[i]);
-			if (!*(Device->Config.Name)) strcpy(Device->Config.Name, Device->FriendlyName);
+			if (!*(Device->Config.Name)) sprintf(Device->Config.Name, "%s+", Device->FriendlyName);
 			Device->SpotPlayer = spotCreatePlayer(Device->Config.Name, id, glHost, Device->Config.VorbisRate, 
 												  FRAMES_PER_BLOCK, Device->Config.ReadAhead, (struct shadowPlayer*)Device);
+			Updated = true;
 		}
 	}
 
-	// walk through the list for device whose timeout expired
-	for (int i = 0; i < MAX_RENDERERS; i++) {
-		Device = glMRDevices + i;
-		if (!Device->Running || Device->Config.RemoveTimeout <= 0 || !Device->Expired || now < Device->Expired + Device->Config.RemoveTimeout*1000) continue;
+	UpdateDevices();
 
-		LOG_INFO("[%p]: removing renderer (%s) on timeout", Device, Device->FriendlyName);
-		spotDeletePlayer(Device->SpotPlayer);
-		DelRaopDevice(Device);
+	// save config file if needed (only when creating/changing config items devices)
+	if ((Updated && glAutoSaveConfigFile) || glDiscovery) {
+		if (!glDiscovery) LOG_INFO("Updating configuration %s", glConfigName);
+		SaveConfig(glConfigName, glConfigID, glDiscovery ? CONFIG_CREATE : CONFIG_UPDATE);
 	}
 
-	if (glAutoSaveConfigFile || glDiscovery) {
-		LOG_DEBUG("Updating configuration %s", glConfigName);
-		SaveConfig(glConfigName, glConfigID, false);
-	}
-
-	// we have not released the slist
+	// we have intentionally not released the slist
 	return false;
 }
 
@@ -409,6 +418,7 @@ static void *MainThread(void *args) {
 		pthread_mutex_lock(&glMainMutex);
 		pthread_cond_reltimedwait(&glMainCond, &glMainMutex, 30*1000);
 		pthread_mutex_unlock(&glMainMutex);
+		if (!glMainRunning) break;
 
 		if (glLogFile && glLogLimit != - 1) {
 			int32_t size = ftell(stderr);
@@ -432,6 +442,8 @@ static void *MainThread(void *args) {
 			}
 		}
 	}
+
+	UpdateDevices();
 
 	return NULL;
 }
@@ -465,11 +477,11 @@ static bool AddRaopDevice(struct sMR *Device, mdnssd_service_t *s) {
 	}
 
 	if (am && strcasestr(am, "appletv") && pk && *pk) {
-		char *token = strchr(Device->Config.Credentials, '@');
-		LOG_INFO("[%p]: AppleTV with authentication (pairing must be done separately)", Device);
-		if (Device->Config.Credentials[0]) sscanf(Device->Config.Credentials, "%[a-fA-F0-9]", Secret);
-		if (token) *token = '\0';
-		sprintf(Device->Config.Credentials + strlen(Device->Config.Credentials), "@%s:%d", inet_ntoa(s->addr), s->port);
+		if (*Device->Config.Credentials) {
+			LOG_INFO("[%p]: AppleTV with valid authentication key %s", Device, Device->Config.Credentials);
+		} else {
+			LOG_INFO("[%p]: AppleTV with no authentication key, create one using '-l' option", Device);
+		}
 	}
 
 	Device->Magic 			= MAGIC;
@@ -534,7 +546,7 @@ static bool AddRaopDevice(struct sMR *Device, mdnssd_service_t *s) {
 								 glDACPid, Device->ActiveRemote,
 								 Device->Config.AlacEncode ? RAOP_ALAC : RAOP_ALAC_RAW , FRAMES_PER_BLOCK,
 								 (uint32_t) MS2TS(Device->Config.ReadAhead, SampleRate ? atoi(SampleRate) : 44100),
-								 Crypto, Auth, Secret, Cipher, md,
+								 Crypto, Auth, Device->Config.Credentials, Cipher, md,
 								 SampleRate ? atoi(SampleRate) : 44100,
 								 SampleSize ? atoi(SampleSize) : 16,
 								 Channels ? atoi(Channels) : 2,
@@ -558,7 +570,7 @@ static bool AddRaopDevice(struct sMR *Device, mdnssd_service_t *s) {
 }
 
 /*----------------------------------------------------------------------------*/
-void FlushRaopDevices(void) {
+static void FlushRaopDevices(void) {
 	for (int i = 0; i < MAX_RENDERERS; i++) {
 		struct sMR *p = &glMRDevices[i];
 		if (p->Running) DelRaopDevice(p);
@@ -566,7 +578,7 @@ void FlushRaopDevices(void) {
 }
 
 /*----------------------------------------------------------------------------*/
-void DelRaopDevice(struct sMR *Device) {
+static void DelRaopDevice(struct sMR *Device) {
 	pthread_mutex_lock(&Device->Mutex);
 	Device->Running = false;
 	pthread_mutex_unlock(&Device->Mutex);
@@ -737,7 +749,7 @@ static void *ActiveRemoteThread(void *args) {
 	return NULL;
 }
 /*----------------------------------------------------------------------------*/
-void StartActiveRemote(struct in_addr host) {
+static void StartActiveRemote(struct in_addr host) {
 	struct sockaddr_in addr;
 	socklen_t nlen = sizeof(struct sockaddr);
 	const char *txt[] = {
@@ -798,7 +810,7 @@ void StartActiveRemote(struct in_addr host) {
 }
 
 /*----------------------------------------------------------------------------*/
-void StopActiveRemote(void) {
+static void StopActiveRemote(void) {
 	if (glActiveRemoteSock != -1) {
 #if WIN
 		shutdown(glActiveRemoteSock, SD_BOTH);
@@ -821,7 +833,7 @@ void StopActiveRemote(void) {
 }
 
 /*----------------------------------------------------------------------------*/
-bool IsExcluded(char* Model, char* Name) {
+static bool IsExcluded(char* Model, char* Name) {
 	char item[STR_LEN];
 	char* p = glExcludedModels;
 	char* q = glExcludedNames;
@@ -873,7 +885,7 @@ static bool Start(void) {
 #endif
 
 	// must bind to an address
-	glHost = get_interface(!strchr(glInterface, '?') ? glInterface : NULL, NULL, &glMask);
+	glHost = get_interface(!strchr(glInterface, '?') ? glInterface : NULL, NULL, &glNetmask);
 	if (glHost.s_addr == INADDR_NONE) return false;
 
 	memset(&glMRDevices, 0, sizeof(glMRDevices));
@@ -966,7 +978,7 @@ static void sighandler(int signum) {
 }
 
 /*---------------------------------------------------------------------------*/
-bool ParseArgs(int argc, char **argv) {
+static bool ParseArgs(int argc, char **argv) {
 	char *optarg = NULL;
 	int i, optind = 1;
 	char cmdline[256] = "";
@@ -979,7 +991,7 @@ bool ParseArgs(int argc, char **argv) {
 		if (strstr("abcrxifpmnod", opt) && optind < argc - 1) {
 			optarg = argv[optind + 1];
 			optind += 2;
-		} else if (strstr("tzZIk"
+		} else if (strstr("tzZIkl"
 #if defined(RESAMPLE)
 						  "uR"
 #endif
@@ -1031,6 +1043,9 @@ bool ParseArgs(int argc, char **argv) {
 			break;
 		case 'o':
 			strcpy(glIncludedNames, optarg);
+			break;
+		case 'l':
+			glPairing = true;
 			break;
 #if LINUX || FREEBSD || SUNOS
 		case 'z':
@@ -1134,6 +1149,18 @@ int main(int argc, char *argv[])
 		return(0);
 	}
 
+	// just do pairing
+	if (glPairing) {
+		glDiscovery = true;
+		Start();
+		printf("\n*************** Wait 5 seconds for player discovery **************\n");
+		sleep(5);
+		printf("\n***************************** done *******************************\n");
+		while (AppleTVPairing()) SaveConfig(glConfigName, glConfigID, CONFIG_UPDATE);
+		Stop();
+		return(0);
+	}
+
 #if LINUX || FREEBSD || SUNOS
 	if (glDaemonize) {
 		if (daemon(1, glLogFile ? 1 : 0)) {
@@ -1188,7 +1215,7 @@ int main(int argc, char *argv[])
 		if (!strcmp(resp, "save"))	{
 			char name[128];
 			i = scanf("%s", name);
-			SaveConfig(name, glConfigID, true);
+			SaveConfig(name, glConfigID, CONFIG_UPDATE);
 		}
 
 		if (!strcmp(resp, "dump") || !strcmp(resp, "dumpall"))	{

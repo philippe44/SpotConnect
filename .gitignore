@@ -25,6 +25,7 @@
 *.la
 *.a
 *.lib
+config.xml
 
 # Executables
 *.out
@@ -43,6 +44,7 @@ build*/
 *.old
 *.log
 .vs/
+pairing/
 
 # Added files
 !build.cmd

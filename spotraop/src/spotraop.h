@@ -19,7 +19,7 @@
 #include "cross_util.h"
 #include "spotify.h"
 
-#define VERSION "v0.0.3"" ("__DATE__" @ "__TIME__")"
+#define VERSION "v0.1.0" " (" __DATE__ " @ " __TIME__ ")"
 
 /*----------------------------------------------------------------------------*/
 /* typedefs */
@@ -90,3 +90,12 @@ extern struct sMR			glMRDevices[MAX_RENDERERS];
 extern char					glExcluded[STR_LEN];
 extern uint16_t				glPortBase, glPortRange;
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+bool AppleTVPairing(void);
+
+#ifdef __cplusplus
+}
+#endif
