@@ -127,7 +127,7 @@ static char usage[] =
 		"  -i <config file>\tdiscover players, save <config file> and exit\n"
 		"  -I \t\t\tauto save config at every network scan\n"
 		"  -f <logfile>\t\twrite debug to logfile\n"
-		"  -l \t\t\tperform AppleTV pairing\n"
+		"  -l \t\t\tAppleTV pairing\n"
 		"  -p <pid file>\t\twrite PID in file\n"
 		"  -m <n1,n2...>\t\texclude devices whose model include tokens\n"
 		"  -n <m1,m2,...>\texclude devices whose name includes tokens\n"
@@ -441,9 +441,9 @@ static void *MainThread(void *args) {
 				}
 			}
 		}
-	}
 
-	UpdateDevices();
+		UpdateDevices();
+	}
 
 	return NULL;
 }
@@ -1153,10 +1153,24 @@ int main(int argc, char *argv[])
 	if (glPairing) {
 		glDiscovery = true;
 		Start();
+
 		printf("\n*************** Wait 5 seconds for player discovery **************\n");
 		sleep(5);
 		printf("\n***************************** done *******************************\n");
-		while (AppleTVPairing()) SaveConfig(glConfigName, glConfigID, CONFIG_UPDATE);
+
+		char* UDN = NULL, * secret = NULL;
+		while (AppleTVpairing(NULL, &UDN, &secret)) {
+			if (!UDN || !secret) continue;
+			for (int i = 0; i < MAX_RENDERERS; i++) {
+				if (glMRDevices[i].Running && !strcasecmp(glMRDevices[i].UDN, UDN)) {
+					strcpy(glMRDevices[i].Config.Credentials, secret);
+					SaveConfig(glConfigName, glConfigID, CONFIG_UPDATE);
+					break;
+				}
+			}
+			NFREE(UDN); NFREE(secret);
+		}
+
 		Stop();
 		return(0);
 	}
