@@ -137,7 +137,7 @@ CSpotPlayer::~CSpotPlayer() {
 
 size_t CSpotPlayer::writePCM(uint8_t* data, size_t bytes, std::string_view trackUnique) {
     // make sure we don't have a dead lock with a disconnect()
-    if (!isRunning) return 0;
+    if (!isRunning || isPaused) return 0;
 
     std::lock_guard lock(playerMutex);
 

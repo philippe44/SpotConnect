@@ -127,7 +127,7 @@ CSpotPlayer::~CSpotPlayer() {
 
 size_t CSpotPlayer::writePCM(uint8_t* pcm, size_t bytes, std::string_view trackUnique) {
     // make sure we don't have a dead lock with a disconnect()
-    if (!isRunning) return 0;
+    if (!isRunning || isPaused) return 0;
 
     if (streamTrackUnique != trackUnique) {
         CSPOT_LOG(info, "trackUniqueId update %s => %s", streamTrackUnique.c_str(), trackUnique.data());
