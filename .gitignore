@@ -45,6 +45,8 @@ build*/
 *.log
 .vs/
 pairing/
+spotraop/bin
+spotupnp/bin
 
 # Added files
 !build.cmd

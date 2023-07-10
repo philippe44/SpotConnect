@@ -131,7 +131,7 @@ target_include_directories(cspot PRIVATE ${BASE}/common/libcodecs/targets/includ
 target_include_directories(cspot PRIVATE ${BASE}/common/libcodecs/targets/include/ogg)
 
 if(NOT MSVC)
-    list(APPEND EXTRA_LIBS dl)
+	list(APPEND EXTRA_LIBS dl)
 	if(CMAKE_SYSTEM_NAME STREQUAL Linux AND (CMAKE_SYSTEM_PROCESSOR STREQUAL armv5 OR
 					 	 CMAKE_SYSTEM_PROCESSOR STREQUAL mips OR
 						 CMAKE_SYSTEM_PROCESSOR STREQUAL powerpc))
@@ -149,13 +149,15 @@ target_link_libraries(${PROJECT} PUBLIC cspot libraop ${EXTRA_LIBS})
 # Configure the targets
 if(NOT APPLE AND NOT CMAKE_SYSTEM_NAME STREQUAL "SunOS")
     add_executable(${PROJECT}-static ${SOURCES})
+    target_link_options(${PROJECT}-static PUBLIC -static)
     target_include_directories(${PROJECT}-static PRIVATE "." ${EXTRA_INCLUDES})
     target_compile_definitions(${PROJECT}-static PRIVATE -DUPNP_STATIC_LIB -D_GNU_SOURCE -DUSE_SSL -DSSL_STATIC_LIB)
-    target_link_libraries(${PROJECT}-static PUBLIC cspot libraop ${EXTRA_LIBS})
+    # openssl library must appear first in link order for static link
     if(MSVC)
         target_link_libraries(${PROJECT}-static PRIVATE ${BASE}/spotraop/libopenssl/targets/${HOST}/${PLATFORM}/libopenssl_static${LIBRARY_SUFFIX})
     else()
         target_link_libraries(${PROJECT}-static PRIVATE ${BASE}/spotraop/libopenssl/targets/${HOST}/${PLATFORM}/libopenssl${LIBRARY_SUFFIX})
     endif()
+    target_link_libraries(${PROJECT}-static PUBLIC cspot libraop ${EXTRA_LIBS})
 endif()
 
