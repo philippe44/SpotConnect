@@ -9,7 +9,7 @@ For AirPlay, the audio can be re-encoded using ALAC or left as raw PCM. Note tha
 
 ## Installing
 
-1. Pre-built binaries are in bin/ directory of reach repository (spotupnp or spotraop). You can download the whole repository as a zip file, clone it using git, or go to the [bin/ folder in the web interface](https://github.com/philippe44/SpotConnect/tree/master/bin) and download the version that matches your OS. It's also possible to download files manually in a terminal by typing (e.g. for spotupnp arm version)<br/>`wget https://raw.githubusercontent.com/philippe44/SpotConnect/master/spotupnp/bin/spotupnp-linux--arm` 
+1. Pre-built binaries are in the zip file (both spotupnp or spotraop), use the version that matches your OS. You can also look at releases
 ```
 For UPnP/Sonos, the file is `spotupnp-<os>-<platform>` (so `airupnp-macos-arm64` for UPnP/Sonos on MacOS + arm CPU) 
 ```	
@@ -21,7 +21,7 @@ For MacOS users, you need to install openSSL and do the following steps to use t
 	ln -s /usr/local/opt/openssl[/x.y.z]/lib/libssl.dylib /usr/local/lib/libssl.dylib 
 	```
 
-3. For Windows, download all the .dll as well if you want to use the non-static version or use the (Windows MSVC package)[https://learn.microsoft.com/en-US/cpp/windows/latest-supported-vc-redist?view=msvc-170]
+3. For Windows, copy all the .dll as well if you want to use the non-static version or use the (Windows MSVC package)[https://learn.microsoft.com/en-US/cpp/windows/latest-supported-vc-redist?view=msvc-170]
 
 4. Store the \<executable\> (e.g. `spotupnp-linux-aarch64multi`) in any directory. 
 
