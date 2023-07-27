@@ -1,3 +1,7 @@
+0.1.2
+ - (spotraop) read name from config file
+ - (spotraop) add keep-alive for HomePod
+ 
 0.1.1
  - make spotraop truly static
  

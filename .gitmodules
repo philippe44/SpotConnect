@@ -10,7 +10,7 @@
 [submodule "common/cspot"]
 	path = common/cspot
 	url = http://www.github.com/philippe44/cspot
-	branch = feat/cdn
+	branch = master
 [submodule "common/libmbedtls"]
 	path = common/libmbedtls
 	url = https://github.com/philippe44/libmbedtls

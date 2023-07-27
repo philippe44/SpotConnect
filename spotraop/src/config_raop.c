@@ -165,6 +165,7 @@ static void LoadConfigItem(tMRConfig *Conf, char *name, char *val) {
 	if (!strcmp(name, "volume_feedback")) Conf->VolumeFeedback = atol(val);
 	if (!strcmp(name, "volume_mode")) Conf->VolumeMode = atol(val);
 	if (!strcmp(name, "alac_encode")) Conf->AlacEncode = atol(val);
+	if (!strcmp(name, "name")) strcpy(Conf->Name, val);
 }
 
 /*----------------------------------------------------------------------------*/

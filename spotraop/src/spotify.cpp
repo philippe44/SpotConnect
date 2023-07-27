@@ -193,21 +193,21 @@ auto CSpotPlayer::postHandler(struct mg_connection* conn) {
     auto requestInfo = mg_get_request_info(conn);
     if (requestInfo->content_length > 0) {
         body.resize(requestInfo->content_length);
-mg_read(conn, body.data(), requestInfo->content_length);
-mg_header hd[10];
-int num = mg_split_form_urlencoded(body.data(), hd, 10);
-std::map<std::string, std::string> queryMap;
+        mg_read(conn, body.data(), requestInfo->content_length);
+        mg_header hd[10];
+        int num = mg_split_form_urlencoded(body.data(), hd, 10);
+        std::map<std::string, std::string> queryMap;
 
-// Parse the form data
-for (int i = 0; i < num; i++) {
-    queryMap[hd[i].name] = hd[i].value;
-}
+        // Parse the form data
+        for (int i = 0; i < num; i++) {
+            queryMap[hd[i].name] = hd[i].value;
+        }
 
-// Pass user's credentials to the blob
-blob->loadZeroconfQuery(queryMap);
+        // Pass user's credentials to the blob
+        blob->loadZeroconfQuery(queryMap);
 
-// We have the blob, proceed to login
-clientConnected.give();
+        // We have the blob, proceed to login
+        clientConnected.give();
     }
 
 #ifdef BELL_ONLY_CJSON
@@ -372,6 +372,7 @@ void CSpotPlayer::runTask() {
 
     // gone with the wind...
     while (isRunning) {
+        uint64_t keepAlive = 0;
         clientConnected.wait();
 
         // we might just be woken up to exit
@@ -408,8 +409,16 @@ void CSpotPlayer::runTask() {
             // exit when player has stopped (received a DISC)
             while (isConnected) {
                 ctx->session->handlePacket();
+                uint64_t now = gettime_ms64();
 
-                if (startTime && gettime_ms64() >= startTime) {
+                // HomePods require a keepalive on RTSP session
+                if (now - keepAlive >= 15 * 1000LL) {
+                    CSPOT_LOG(debug, "keepAlive %s", name.c_str());
+                    raopcl_keepalive(raopClient);
+                    keepAlive = now;
+                }
+
+                if (startTime && now >= startTime) {
                     spirc->notifyAudioReachedPlayback();
                     startTime = 0;
                 } else if (stopTime && gettime_ms64() >= stopTime) {
