@@ -5,33 +5,36 @@ SpotConnect can run on any machine that has access to your local network (Window
 
 For UPnP, the audio, after being decoded from vorbis, can be sent in plain, or re-encoded using mp3 or flac. The tracks can be sent one-by one and use the capability of UPnP players to do gapless playback by sending the next track ahead of the current one, but not all players support that or might simply be faulty. There is also a 'flow' mode where all tracks are sent in a continuous stream, similar to a webradio. Note that this mode can be brittle with regard to track position. In 'flow' mode, metadata are likely not to be sent, unlesss player supports 'icy' protocol.
 
-For AirPlay, the audio can be re-encoded using ALAC or left as raw PCM. Note that bridging also works with AppleTV, but you need to create a pairing key. This is done by launching the application with the `-l` option and following instructions. Note that a config file is automatically written and will be required for further use. For software-based AirPlay emulators like most cheap knock-off, encryption is required (see below) 
+For AirPlay, the audio can be re-encoded using ALAC or left as raw PCM. Note that bridging also works with AppleTV, but you need to create a pairing key. This is done by launching the application with the `-l` option and following instructions. A config file with the required `<credentials>` tag is automatically written to the directory from which the application was launched and will be required for further use. For software-based AirPlay emulators like most cheap knock-off, encryption is required (see below) 
 
 ## Installing
 
-1. Pre-built binaries are in the zip file (both spotupnp or spotraop), use the version that matches your OS. You can also look at releases
-```
-For UPnP/Sonos, the file is `spotupnp-<os>-<platform>` (so `airupnp-macos-arm64` for UPnP/Sonos on MacOS + arm CPU) 
-```	
-For MacOS users, you need to install openSSL and do the following steps to use the dynamic load library version:
-	- install openssl: `brew install openssl`. This creates libraries (or at least links) into `/usr/local/opt/openssl[/x.y.z]/lib` where optional 'x.y.z' is a version number
-	- create links to these libraries: 
-	```
-	ln -s /usr/local/opt/openssl[/x.y.z]/lib/libcrypto.dylib /usr/local/lib/libcrypto.dylib 
-	ln -s /usr/local/opt/openssl[/x.y.z]/lib/libssl.dylib /usr/local/lib/libssl.dylib 
-	```
+1. Pre-built binaries are in the **SpotConnect-X.Y.Z.zip** file (both spotupnp or spotraop), use the version that matches your OS. You can also look at releases
 
-3. For Windows, copy all the .dll as well if you want to use the non-static version or use the (Windows MSVC package)[https://learn.microsoft.com/en-US/cpp/windows/latest-supported-vc-redist?view=msvc-170]
+   * For AirPlay, the file is `spotraop-<os>-<platform>` (so `spotraop-linux-aarch64` for AirPlay on Linux + arm64 CPU)
+   * For UPnP/Sonos, the file is `spotupnp-<os>-<platform>` (so `spotupnp-macos-arm64` for UPnP/Sonos on macOS + arm CPU)
 
-4. Store the \<executable\> (e.g. `spotupnp-linux-aarch64multi`) in any directory. 
+1. Store the \<executable\> (e.g. `spotupnp-linux-aarch64multi`) in any directory. 
 
-4. On non-Windows machines, open a terminal and change directories to where the executable is stored and run `chmod +x <executable>`. (Example: `chmod +x spotupnp-osx-multi`). Note that if you choose to download the whole repository (instead of individual files) from you web browser and then unzip it, then in the bin/ sub-directory, file permissions should be already set.
+1. OS-specific steps:
+	
+   * **macOS**: Install openSSL and do the following steps to use the dynamic load library version:
+	   - install openssl: `brew install openssl`. This creates libraries (or at least links) into `/usr/local/opt/openssl[/x.y.z]/lib` where optional 'x.y.z' is a version number
+	   - create links to these libraries: 
+	   ```
+	   ln -s /usr/local/opt/openssl[/x.y.z]/lib/libcrypto.dylib /usr/local/lib/libcrypto.dylib 
+	   ln -s /usr/local/opt/openssl[/x.y.z]/lib/libssl.dylib /usr/local/lib/libssl.dylib 
+	   ```
+    
+   * **Non-Windows machines (including macOS)**, open a terminal and change directories to where the executable is stored and run `chmod +x <executable>`. (Example: `chmod +x spotupnp-osx-multi`). Note that if you choose to download the whole repository (instead of individual files) from you web browser and then unzip it, then in the bin/ sub-directory, file permissions should be already set.
+     
+   * **Windows**: Copy all the .dll as well if you want to use the non-static version or use the (Windows MSVC package)[https://learn.microsoft.com/en-US/cpp/windows/latest-supported-vc-redist?view=msvc-170]
 
-5. Don't use firewall or set ports using options below and open them. 
+1. Don't use firewall or set ports using options below and open them. 
 	- Each device uses 1 port for HTTP (use `-a` parameter, default is random)
 	- UPnP adds one extra port for discovery (use `-b` or \<upnp_socket\> parameter, default is 49152 and user value must be *above* this)
 
-6. In Docker, you must use 'host' mode to enable audio webserver. Note that you can't have a NAT between your devices and the machine where AirConnect runs.
+1. In Docker, you must use 'host' mode to enable audio webserver. Note that you can't have a NAT between your devices and the machine where AirConnect runs.
 
 ## Running
 
@@ -52,10 +55,10 @@ For each platform, there is a normal and a '-static' version. This one includes 
 - Volume changes made in native control applications are synchronized with Spotify controller
 - Pause made using native control application is sent back to Spotify
 - Re-scan for new / lost players happens every 30s
-- A config file (default `config.xml`) can be created for advanced tweaking (a reference version can be generated using  the `-i <file>` command line)
+- A config file (default `config.xml`) can be created for advanced tweaking (a reference version can be generated using  the `-i <file>` command line). To specify a config file, use `-x <file>`.
 - When you have more than one ethernet card, you case use `-b [ip|iface]` to set what card to bind to. Note that 0.0.0.0 is not authorized
-- Use `-l`for flow mode where audio is sent as a single continuous stream
-- Use `-b [ip|iface][:port]`to set network interface (ip@ or interface name as reported by ifconfig/ipconfig) to use and, for spotupnp only, UPnP port to listen to (must be above the default 49152)
+- Use `-l` for AppleTV pairing mode
+- Use `-b [ip|iface][:port]` to set network interface (ip@ or interface name as reported by ifconfig/ipconfig) to use and, for spotupnp only, UPnP port to listen to (must be above the default 49152)
 - Use `-r` to set Spotify's Vorbis encoding rate
 - Use `-a <port>[:<count>]`to specify a port range (default count is 128)
 - Use of `-z` disables interactive mode (no TTY) **and** self-daemonizes (use `-p <file>` to get the PID). Use of `-Z` only disables interactive mode 
@@ -63,14 +66,15 @@ For each platform, there is a normal and a '-static' version. This one includes 
 
 ## Config file parameters 
 
-The default configuration file is `config.xml`, stored in the same directory as the \<executable\>. Each of parameters below can be set in the `<common>` section to apply to all devices. It can also be set in any `<device>` section to apply only to a specific device and overload the value set in `<common>`. Use the `-x <config>`command line option to use a config file of your choice.
+The default configuration file is `config.xml`, stored in the same directory as the \<executable\>. Each of "Common" parameters below can be set in the `<common>` section to apply to all devices. It can also be set in any `<device>` section to apply only to a specific device and overload the value set in `<common>`. Use the `-x <config>` command line option to use a config file of your choice.
 
 ### Common
-- `enabled 0|1` : in common section, enables new discovered players by default. In a dedicated section, enables the player
+- `enabled <0|1>` : in common section, enables new discovered players by default. In a dedicated section, enables the player
 - `name`        : The name that will appear for the device in AirPlay. You can change the default name.
-- `vorbis_rate 96|160|320` : set the Spotify bitrate
+- `vorbis_rate <96|160|320>` : set the Spotify bitrate
+- `remove_timeout <-1|n>` : set to `-1` to avoid removing devices prematurely
 
-### UPnP
+##### UPnP
 - `upnp_max`    : set the maximum UPnP version use to search players (default 1)
 - `artwork`	: an URL to a fixed artwork to be displayed on player in flow mode
 - `flow`        : enable flow mode
@@ -78,13 +82,16 @@ The default configuration file is `config.xml`, stored in the same directory as 
 - `http_content_length`	   : same as `-g` command line parameter
 - `codec mp3[:<bitrate>] | flc[:0..9] | wav | pcm`: format used to send HTTP audio. FLAC is recommended but uses more CPU (pcm only available for UPnP). For example, `mp3:320` for 320Kb/s MP3 encoding.
 
-### AirPlay
-- `codec alac|pcm`: format used to send audio
+#### AirPlay
+- `alac_encode <0|1>`: format used to send audio (`0` = PCM, `1` = ALAC)
 - `encryption <0|1>`: most software-based player and cheap knock-off require encryption to be activated otherwise they won't stream.
 
-These are the global parameters
+#### Apple TV
+- `credentials`   : Apple TV pairing credential obtained from running in `-l` pairing mode
 
-- `log_limit <-1 | n>` 	   : (default -1) when using log file, limits its size to 'n' MB (-1 = no limit)
+### Global
+These are set in the main `<spotraop>` section:
+- `log_limit <-1|n>` 	   : (default -1) when using log file (`-f` parameter), limits its size to 'n' MB (-1 = no limit)
 - `max_players`            : set the maximum of players (default 32)
 - `ports <port>[:<count>]` : set port range to use (see -a)
 - `interface ?|<iface>|<ip>` : set the network interface, ip or autodetect
@@ -121,7 +128,7 @@ To view the log, `journalctl -u spotupnp.service`
 
 On rPi lite, add the following to the /boot/cmdline.txt: init=/bin/systemd
 
-## Start automatically in MacOS (credits @aiwipro)
+## Start automatically in macOS (credits @aiwipro)
 
 Create the file com.spotupnp.bridge.plist in ~/Library/LaunchAgents/ 
 
