@@ -262,8 +262,7 @@ void CSpotPlayer::eventHandler(std::unique_ptr<cspot::SpircHandler::Event> event
             raopcl_flush(raopClient);
             stopTime = gettime_ms64() + 15 * 1000;
             startOffset = raopcl_get_progress_ms(raopClient);
-        }
-        else {
+        } else {
             // if we are starting from a timeout disconnect, need to resend everything
             if (!stopTime && trackStatus == TRACK_STREAMING) {
                 metadata_t metadata = { 0 };
@@ -273,7 +272,6 @@ void CSpotPlayer::eventHandler(std::unique_ptr<cspot::SpircHandler::Event> event
                 // need to let shadow do as we don't know if metadata are allowed
                 shadowRequest(shadow, SPOT_METADATA, &metadata);
                 trackStatus = TRACK_READY;
-
             }
             stopTime = 0;
             shadowRequest(shadow, SPOT_PLAY);
@@ -322,7 +320,7 @@ void CSpotPlayer::eventHandler(std::unique_ptr<cspot::SpircHandler::Event> event
 void notify(CSpotPlayer* self, enum shadowEvent event, va_list args) {
      // always accept volume command
      if (event == SHADOW_VOLUME) {
-         int volume = va_arg(args, int);
+        int volume = va_arg(args, int);
         if (self->spirc) self->spirc->setRemoteVolume(volume);
         self->volume = volume;
         return;

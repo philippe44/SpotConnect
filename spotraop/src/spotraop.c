@@ -220,7 +220,7 @@ void shadowRequest(struct shadowPlayer* shadow, enum spotEvent event, ...) {
 		raopcl_connect(Device->Raop, Device->PlayerIP, Device->PlayerPort, true);
 		break;
 	case SPOT_PLAY:
-		LOG_INFO("[%p]: spotify play request", Device);
+		LOG_INFO("[%p]: spotify PLAY request", Device);
 		raopcl_connect(Device->Raop, Device->PlayerIP, Device->PlayerPort, true);
 		Device->SpotState = SPOT_PLAY;
 		break;
@@ -234,7 +234,7 @@ void shadowRequest(struct shadowPlayer* shadow, enum spotEvent event, ...) {
 		Device->Volume = -30.0 * (1.0 - (double) va_arg(args, int) / UINT16_MAX);
 		raopcl_set_volume(Device->Raop, Device->Volume > -30.0 ? Device->Volume : -144);
 
-		LOG_INFO("[%p]: spotify volume request %lf", Device, Device->Volume);
+		LOG_INFO("[%p]: spotify VOLUME request %lf", Device, Device->Volume);
 		break;
 	}
 	case SPOT_METADATA: {

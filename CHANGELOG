@@ -1,3 +1,6 @@
+0.1.3
+ - longer timeout in cross-net otherwise some ATV fail to pair
+ 
 0.1.2
  - (spotraop) read name from config file
  - (spotraop) add keep-alive for HomePod
