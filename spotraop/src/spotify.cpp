@@ -330,11 +330,20 @@ void notify(CSpotPlayer* self, enum shadowEvent event, va_list args) {
     if (!self->spirc) return;
     
     switch (event) {      
+    case SHADOW_NEXT:
+        self->spirc->nextSong();
+        break;
+    case SHADOW_PREV:
+        self->spirc->previousSong();
+        break;
     case SHADOW_PLAY:
         self->spirc->setPause(false);
         break;
     case SHADOW_PAUSE:
         self->spirc->setPause(true);
+        break;
+    case SHADOW_PLAY_TOGGLE:
+        self->spirc->setPause(!self->isPaused);
         break;
     case SHADOW_STOP:
         // @FIXME: is there some case for teardown?
