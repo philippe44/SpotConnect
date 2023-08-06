@@ -894,7 +894,10 @@ static bool Start(void) {
 	pthread_cond_init(&glMainCond, 0);
 
     for (i = 0; i < MAX_RENDERERS;  i++) {
-		pthread_mutex_init(&glMRDevices[i].Mutex, 0);
+		pthread_mutexattr_t mutexAttr;
+		pthread_mutexattr_init(&mutexAttr);
+		pthread_mutexattr_settype(&mutexAttr, PTHREAD_MUTEX_RECURSIVE);
+		pthread_mutex_init(&glMRDevices[i].Mutex, &mutexAttr);
 	}
 
 	// start cspot
