@@ -293,11 +293,11 @@ void shadowRequest(struct shadowPlayer *shadow, enum spotEvent event, ...) {
 	va_list args;
 	va_start(args, event);
 
-	// try to lock in case caller did not lock it
-	int locked = pthread_mutex_trylock(&Device->Mutex);
+	// mutex is recursive so we should not have issue with shadow/notify calls
+	pthread_mutex_trylock(&Device->Mutex);
 
 	if (!Device->Running) {
-		if (!locked) pthread_mutex_unlock(&Device->Mutex);
+		pthread_mutex_unlock(&Device->Mutex);
 		return;
 	}
 
@@ -393,7 +393,7 @@ void shadowRequest(struct shadowPlayer *shadow, enum spotEvent event, ...) {
 	}
 
 	va_end(args);
-	if (!locked) pthread_mutex_unlock(&Device->Mutex);
+	pthread_mutex_unlock(&Device->Mutex);
 }
 
 /*----------------------------------------------------------------------------*/
@@ -1223,7 +1223,11 @@ static bool Start(bool cold) {
 	if (cold) {
 		// mutex should *always* be valid
 		glMRDevices = calloc(glMaxDevices, sizeof(struct sMR));
-		for (int i = 0; i < glMaxDevices; i++) pthread_mutex_init(&glMRDevices[i].Mutex, 0);
+
+		pthread_mutexattr_t mutexAttr;
+		pthread_mutexattr_init(&mutexAttr);
+		pthread_mutexattr_settype(&mutexAttr, PTHREAD_MUTEX_RECURSIVE);
+		for (int i = 0; i < glMaxDevices; i++) pthread_mutex_init(&glMRDevices[i].Mutex, &mutexAttr);
 
 		// start the main thread 
 		pthread_create(&glMainThread, NULL, &MainThread, NULL);
