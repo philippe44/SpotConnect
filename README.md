@@ -166,7 +166,7 @@ There are many tools that allow an application to be run as a service. You can t
 
 ## Synology installation
 
-N/As
+N/A
 
 ## Player specific hints and tips
 
