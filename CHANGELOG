@@ -1,3 +1,7 @@
+0.1.6
+ - (spotraop) delay daap/artwork activation time
+ - just follow spotupnp version
+
 0.1.5
  - (spotraop) device mutex is recursive so we can have shadowRequest and spotNotify called in the same thread
  - (spotupnp) same as above, but we had a trylock in shadow before, make sure this still does work

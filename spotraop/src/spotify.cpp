@@ -278,13 +278,11 @@ void CSpotPlayer::eventHandler(std::unique_ptr<cspot::SpircHandler::Event> event
         }
         break;
     }
+    case cspot::SpircHandler::EventType::FLUSH:
+        // sent when NEXT is pressed on last track, we'll go timeout but will not be a "resume" when playing another track 
     case cspot::SpircHandler::EventType::NEXT:
     case cspot::SpircHandler::EventType::PREV:
         raopcl_flush(raopClient);
-        break;
-    case cspot::SpircHandler::EventType::FLUSH:
-        // sent when there is no next but NEXT is pressed
-        raopcl_disconnect(raopClient);
         break;
     case cspot::SpircHandler::EventType::DISC:
         disconnect();

@@ -82,7 +82,7 @@ tMRConfig			glMRConfig = {
 							120,			 // RemoveTimeout
 							false,			 // Encryption
 							"",				 // Credentials
-							1000,			 // ReadAhead
+							2000,			 // ReadAhead
 							2,				 // VolumeMode = HARDWARE
 							VOLUME_FEEDBACK, // VolumeFeedback
 							true,			 // AlacEncode
@@ -106,7 +106,7 @@ static pthread_mutex_t		glMainMutex;
 static pthread_cond_t		glMainCond;
 static bool					glInteractive = true;
 static char					*glLogFile;
-static char 				glDACPid[] = "1A2B3D4EA1B2C3D4";
+static char 				glDACPid[] = "1A2B3D4EA1B2C3D5";
 static struct mdnsd 		*gl_mDNSResponder;
 static int					glActiveRemoteSock;
 static pthread_t			glActiveRemoteThread;
@@ -280,6 +280,7 @@ static void* GetArtworkThread(void *arg) {
 
 	// only send if we are running (if flushed then nothing happens)
 	if (Artwork->Size > 0 && Device->Running) {
+		LOG_INFO("got artwork for %s", Artwork->Url);
 		raopcl_set_artwork(Device->Raop, Artwork->ContentType, Artwork->Size, Artwork->Image);
 	}
 
