@@ -28,7 +28,7 @@ For AirPlay, the audio can be re-encoded using ALAC or left as raw PCM. Note tha
     
    * **Non-Windows machines (including macOS)**, open a terminal and change directories to where the executable is stored and run `chmod +x <executable>`. (Example: `chmod +x spotupnp-osx-multi`). Note that if you choose to download the whole repository (instead of individual files) from you web browser and then unzip it, then in the bin/ sub-directory, file permissions should be already set.
      
-   * **Windows**: Copy all the .dll as well if you want to use the non-static version or use the (Windows MSVC package)[https://learn.microsoft.com/en-US/cpp/windows/latest-supported-vc-redist?view=msvc-170]
+   * **Windows**: Copy all the .dll as well if you want to use the non-static version or use the [Windows MSVC package](https://learn.microsoft.com/en-US/cpp/windows/latest-supported-vc-redist?view=msvc-170)
 
 1. Don't use firewall or set ports using options below and open them. 
 	- Each device uses 1 port for HTTP (use `-a` parameter, default is random)
