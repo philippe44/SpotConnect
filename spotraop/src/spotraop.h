@@ -19,7 +19,7 @@
 #include "cross_util.h"
 #include "spotify.h"
 
-#define VERSION "v0.1.6" " (" __DATE__ " @ " __TIME__ ")"
+#define VERSION "v0.1.7" " (" __DATE__ " @ " __TIME__ ")"
 
 /*----------------------------------------------------------------------------*/
 /* typedefs */
@@ -75,7 +75,6 @@ struct sMR {
 	struct raopcl_s	*Raop;
 	struct in_addr 	PlayerIP;
 	uint16_t		PlayerPort;
-	pthread_t		Thread;
 	uint8_t			PlayerStatus;
 	pthread_mutex_t Mutex;
 	char ActiveRemote[16];

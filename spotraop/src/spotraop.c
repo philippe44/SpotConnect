@@ -512,8 +512,7 @@ static bool AddRaopDevice(struct sMR *Device, mdnssd_service_t *s) {
 		uint32_t mac_size = 6;
 		if (SendARP(s->addr.s_addr, INADDR_ANY, Device->Config.MAC, &mac_size)) {
 			*(uint32_t*)(Device->Config.MAC + 2) = hash32(Device->UDN);
-			LOG_INFO("[%p]: creating MAC", Device);
-		}
+	}
 		memset(Device->Config.MAC, 0xaa, 2);
 	}
 
@@ -583,10 +582,10 @@ static void DelRaopDevice(struct sMR *Device) {
 	pthread_mutex_lock(&Device->Mutex);
 	Device->Running = false;
 	pthread_mutex_unlock(&Device->Mutex);
-	pthread_join(Device->Thread, NULL);
+	// there is no thread to join here...
 	raopcl_destroy(Device->Raop);
 
-	LOG_INFO("[%p]: Raop device stopped", Device);
+	LOG_INFO("[%p]: Raop device stopped (%s)", Device, Device->FriendlyName);
 }
 
 /*----------------------------------------------------------------------------*/
@@ -927,7 +926,7 @@ static bool Start(void) {
 static bool Stop(void) {
 	glMainRunning = false;
 
-	LOG_DEBUG("terminate search thread ...", NULL);
+	LOG_INFO("terminate search thread ...", NULL);
 
 	// this forces an ongoing search to end
 	mdnssd_close(glmDNSsearchHandle);
@@ -936,14 +935,14 @@ static bool Stop(void) {
 	// can now finish all cspot instances
 	spotClose();
 
-	LOG_DEBUG("flush renderers ...", NULL);
+	LOG_INFO("flush renderers ...", NULL);
 	FlushRaopDevices();
 
 	// Stop ActiveRemote server
-	LOG_DEBUG("terminate mDNS responder", NULL);
+	LOG_INFO("terminate mDNS responder", NULL);
 	StopActiveRemote();
 
-	LOG_DEBUG("terminate main thread ...", NULL);
+	LOG_INFO("terminate main thread ...", NULL);
 	pthread_cond_signal(&glMainCond);
 	pthread_join(glMainThread, NULL);
 	pthread_mutex_destroy(&glMainMutex);
@@ -1255,7 +1254,7 @@ int main(int argc, char *argv[])
 
 	LOG_INFO("stopping cspot devices ...", NULL);
 	spotClose();
-	LOG_INFO("stopping Raop devices ...", NULL);
+	LOG_INFO("stopping raop devices ...", NULL);
 	Stop();
 	LOG_INFO("all done", NULL);
 	return true;
