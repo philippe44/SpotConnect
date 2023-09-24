@@ -265,6 +265,7 @@ sleep:
 
 	// clean our stuff before exiting
 	AVTActionFlush(&p->ActionQueue);
+	LOG_INFO("[%p] player thread exited", p);
 
 	return NULL;
 }
@@ -928,9 +929,7 @@ static void *UpdateThread(void *args) {
 				}
 				
 				Updated = true;
-				//@TODO: remove
-				//if (!strstr(ModelName, "foobar") && !strstr(ModelName, "WX") && !strstr(ModelName, "Sonos") && !strstr(ModelName, "Wii")) goto cleanup;
-				
+			
 				if (AddMRDevice(Device, UDN, DescDoc, Update->Data) && !glDiscovery) {
 					// create a new Spotify Connect device
 					char id[6*2+1] = { 0 };
@@ -940,6 +939,7 @@ static void *UpdateThread(void *args) {
 														  (struct shadowPlayer*) Device, &Device->Mutex);
 					if (!Device->SpotPlayer) {
 						LOG_ERROR("[%p]: cannot create Spotify instance (%s)", Device, Device->Config.Name);
+						pthread_mutex_lock(&Device->Mutex);
 						DelMRDevice(Device);
 					}
 				}
@@ -1564,9 +1564,10 @@ int main(int argc, char *argv[]) {
 
 			for (int i = 0; i < glMaxDevices; i++) {
 				struct sMR *p = &glMRDevices[i];
-				bool Locked = pthread_mutex_trylock(&p->Mutex);
 
+				bool Locked = pthread_mutex_trylock(&p->Mutex);
 				if (!Locked) pthread_mutex_unlock(&p->Mutex);
+
 				if (!p->Running && !all) continue;
 				printf("%20.20s [r:%u] [l:%u] [s:%u] Last:%u eCnt:%u\n",
 						p->Config.Name, p->Running, Locked, p->State,

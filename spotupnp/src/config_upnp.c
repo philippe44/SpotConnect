@@ -1,5 +1,5 @@
 /*
- * AirUPnP - Config utils
+ * UPnP config utils
  *
  * (c) Philippe, philippe_44@outlook.com
  *
@@ -30,7 +30,7 @@ void SaveConfig(char *name, void *ref, bool full) {
 	IXML_Document *doc = ixmlDocument_createDocument();
 	IXML_Document *old_doc = ref;
 	IXML_Node *root, *common, *proto;
-	IXML_Element* old_root = ixmlDocument_getElementById(old_doc, "airupnp");
+	IXML_Element* old_root = ixmlDocument_getElementById(old_doc, "spotupnp");
 
 	if (!full && old_doc) {
 		ixmlDocument_importNode(doc, (IXML_Node*) old_root, true, &root);
@@ -47,7 +47,7 @@ void SaveConfig(char *name, void *ref, bool full) {
 		proto = (IXML_Node*) ixmlDocument_getElementById((IXML_Document*) common, "protocolInfo");
 	}
 	else {
-		root = XMLAddNode(doc, NULL, "airupnp", NULL);
+		root = XMLAddNode(doc, NULL, "spotupnp", NULL);
 		common = (IXML_Node*) XMLAddNode(doc, root, "common", NULL);
 		proto = (IXML_Node*) XMLAddNode(doc, common, "protocolInfo", NULL);
 	}
@@ -173,7 +173,7 @@ static void LoadGlobalItem(char *name, char *val) {
 void *FindMRConfig(void *ref, char *UDN) {
 	IXML_Node	*device = NULL;
 	IXML_Document *doc = (IXML_Document*) ref;
-	IXML_Element* elm = ixmlDocument_getElementById(doc, "airupnp");
+	IXML_Element* elm = ixmlDocument_getElementById(doc, "spotupnp");
 	IXML_NodeList* l1_node_list = ixmlDocument_getElementsByTagName((IXML_Document*) elm, "udn");
 
 	for (unsigned i = 0; i < ixmlNodeList_length(l1_node_list); i++) {
@@ -214,7 +214,7 @@ void *LoadConfig(char *name, tMRConfig *Conf) {
 	IXML_Document* doc = ixmlLoadDocument(name);
 	if (!doc) return NULL;
 
-	IXML_Element* elm = ixmlDocument_getElementById(doc, "airupnp");
+	IXML_Element* elm = ixmlDocument_getElementById(doc, "spotupnp");
 	if (elm) {
 		IXML_NodeList* l1_node_list = ixmlNode_getChildNodes((IXML_Node*) elm);
 		for (unsigned i = 0; i < ixmlNodeList_length(l1_node_list); i++) {

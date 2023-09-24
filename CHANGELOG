@@ -1,3 +1,9 @@
+0.1.8
+ - (spotupnp) Fix deadlock on bye-bye => DelMRDevice should not try_lock (mutex is already locked and recursive anyway)
+ - (spotupnp) unify UPnP utility code with AirConnect
+ - (spotupnp) config file XML tag was still airupnp
+ - (spotraop) fix log of un-initialized string in case of exec_request error
+ 
 0.1.7
  - (spotraop) fix crash due to joining a non-existing player thread at exit
  - more longs in info instead of debug at exit

@@ -1,5 +1,5 @@
 /*
- * AirUPnP - Renderer utils
+ * UPnP renderer utils
  *
  * (c) Philippe, philippe_44@outlook.com
  *
@@ -12,11 +12,10 @@
 #include "platform.h"
 #include "ixml.h"
 #include "ixmlextra.h"
-#include "spotupnp.h"
-#include "avt_util.h"
 #include "upnptools.h"
 #include "cross_thread.h"
 #include "cross_log.h"
+#include "avt_util.h"
 #include "mr_util.h"
 
 extern log_level	util_loglevel;
@@ -54,7 +53,6 @@ struct sMR *GetMaster(struct sMR *Device, char **Name)
 	bool done = false;
 
 	if (!*Service->ControlURL) return NULL;
-
 
 	ActionNode = UpnpMakeAction("GetZoneGroupState", Service->Type, 0, NULL);
 
@@ -141,11 +139,7 @@ void FlushMRDevices(void)
 }
 
 /*----------------------------------------------------------------------------*/
-void DelMRDevice(struct sMR *p)
-{
-	// already locked expect for failed creation which means a trylock is fine
-	pthread_mutex_trylock(&p->Mutex);
-
+void DelMRDevice(struct sMR *p) {
 	// try to unsubscribe but missing players will not succeed and as a result
 	// terminating the libupnp takes a while ...
 	for (int i = 0; i < NB_SRV; i++) {
@@ -156,9 +150,8 @@ void DelMRDevice(struct sMR *p)
 
 	p->Running = false;
 
-	// kick-up all sleepers
+	// kick-up all sleepers and join player's thread
 	crossthreads_wake();
-
 	pthread_mutex_unlock(&p->Mutex);
 	pthread_join(p->Thread, NULL);
 }

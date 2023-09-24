@@ -19,7 +19,7 @@
 #include "cross_util.h"
 #include "spotify.h"
 
-#define VERSION "v0.1.7" " (" __DATE__ " @ " __TIME__ ")"
+#define VERSION "v0.1.8" " (" __DATE__ " @ " __TIME__ ")"
 
 /*----------------------------------------------------------------------------*/
 /* typedefs */
