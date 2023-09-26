@@ -120,11 +120,11 @@ HTTPstreamer::HTTPstreamer(struct in_addr addr, std::string id, unsigned index, 
     struct sockaddr_in host;
     host.sin_addr = addr;
     host.sin_family = AF_INET;
-    host.sin_port = htons(portBase + rand() % (portRange + 1));
 
-    for (int i = 0; bind(listenSock, (const sockaddr*)&host, sizeof(host)) < 0; i++) {
-        if (!portBase || i == portRange - 1) throw std::runtime_error("can't bind on port" + std::string(strerror(errno)));
-        host.sin_port = htons(portBase + i);
+    for (int count = 0, offset = rand() % portRange; count < portRange; count++, offset++) {
+        host.sin_port = htons(portBase + (offset % portRange));
+        if (!bind(listenSock, (const sockaddr*) &host, sizeof(host))) break;
+        if (!portBase || count == portRange) throw std::runtime_error("can't bind on port" + std::string(strerror(errno)));
     }
 
     socklen_t len = sizeof(host);

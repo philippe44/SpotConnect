@@ -580,7 +580,7 @@ void spotOpen(uint16_t portBase, uint16_t portRange, char *username, char* passw
         once = true;
     }
     HTTPstreamer::portBase = portBase;
-    HTTPstreamer::portRange = portRange;
+    if (portRange) HTTPstreamer::portRange = portRange;
     if (username) CSpotPlayer::username = username;
     if (password) CSpotPlayer::password = password;
 }

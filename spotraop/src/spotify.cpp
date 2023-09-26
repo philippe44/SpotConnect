@@ -82,7 +82,7 @@ private:
 public:
     typedef enum { TRACK_INIT, TRACK_READY, TRACK_STREAMING, TRACK_END } TrackStatus;
     std::atomic<TrackStatus> trackStatus = TRACK_INIT;
-    inline static uint16_t portBase = 0, portRange = 0;
+    inline static uint16_t portBase = 0, portRange = 1;
     inline static std::string username = "", password = "";
 
     CSpotPlayer(char* name, char* id, char *credentials, struct in_addr addr, AudioFormat audio, 
@@ -475,7 +475,7 @@ void spotOpen(uint16_t portBase, uint16_t portRange, char *username, char *passw
         once = true;
     }
     CSpotPlayer::portBase = portBase;
-    CSpotPlayer::portRange = portRange;
+    if (portRange) CSpotPlayer::portRange = portRange;
     if (username) CSpotPlayer::username = username;
     if (password) CSpotPlayer::password = password;
 }
