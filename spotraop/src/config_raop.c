@@ -37,16 +37,14 @@ extern log_level	util_loglevel;
 static log_level __attribute__((unused)) * loglevel = &util_loglevel;
 
 /*----------------------------------------------------------------------------*/
-void SaveConfig(char *name, void *ref, int mode) {
+void SaveConfig(char *name, void *ref, bool full) {
 	struct sMR *p;
 	IXML_Document *doc = ixmlDocument_createDocument();
 	IXML_Document *old_doc = ref;
 	IXML_Node	 *root, *common;
-	bool force = (mode == CONFIG_MIGRATE);
-
 	IXML_Element* old_root = ixmlDocument_getElementById(old_doc, "spotraop");
 
-	if (mode != CONFIG_CREATE && old_doc) {
+	if (!full && old_doc) {
 		ixmlDocument_importNode(doc, (IXML_Node*) old_root, true, &root);
 		ixmlNode_appendChild((IXML_Node*) doc, root);
 
@@ -66,30 +64,30 @@ void SaveConfig(char *name, void *ref, int mode) {
 		common = (IXML_Node*) XMLAddNode(doc, root, "common", NULL);
 	}
 
-	XMLUpdateNode(doc, root, force, "interface", glInterface);
-	// do not update log if cmd line has set it
-	if (!log_cmdline) {
-		XMLUpdateNode(doc, root, force, "slimproto_log", level2debug(slimproto_loglevel));
-		XMLUpdateNode(doc, root, force, "stream_log", level2debug(stream_loglevel));
-		XMLUpdateNode(doc, root, force, "output_log", level2debug(output_loglevel));
-		XMLUpdateNode(doc, root, force, "decode_log", level2debug(decode_loglevel));
-		XMLUpdateNode(doc, root, force, "main_log",level2debug(main_loglevel));
-		XMLUpdateNode(doc, root, force, "slimmain_log", level2debug(slimmain_loglevel));
-		XMLUpdateNode(doc, root, force, "raop_log",level2debug(raop_loglevel));
-		XMLUpdateNode(doc, root, force, "util_log",level2debug(util_loglevel));
-	}
-	XMLUpdateNode(doc, root, force, "log_limit", "%d", (int32_t) glLogLimit);
-	XMLUpdateNode(doc, root, false, "ports", "%hu:%hu", glPortBase, glPortRange);
+		XMLUpdateNode(doc, root, false, "slimproto_log", level2debug(slimproto_loglevel));
+	XMLUpdateNode(doc, root, false, "stream_log", level2debug(stream_loglevel));
+	XMLUpdateNode(doc, root, false, "output_log", level2debug(output_loglevel));
+	XMLUpdateNode(doc, root, false, "decode_log", level2debug(decode_loglevel));
+	XMLUpdateNode(doc, root, false, "main_log",level2debug(main_loglevel));
+	XMLUpdateNode(doc, root, false, "slimmain_log", level2debug(slimmain_loglevel));
+	XMLUpdateNode(doc, root, false, "raop_log",level2debug(raop_loglevel));
+	XMLUpdateNode(doc, root, false, "util_log",level2debug(util_loglevel));
+	XMLUpdateNode(doc, root, false, "log_limit", "%d", (int32_t) glLogLimit);
 
-	XMLUpdateNode(doc, common, force, "enabled", "%d", (int) glMRConfig.Enabled);
-	XMLUpdateNode(doc, common, force, "volume_feedback", "%d", (int) glMRConfig.VolumeFeedback);
-	XMLUpdateNode(doc, common, force, "volume_mode", "%d", (int) glMRConfig.VolumeMode);
-	XMLUpdateNode(doc, common, force, "send_metadata", "%d", (int) glMRConfig.SendMetaData);
-	XMLUpdateNode(doc, common, force, "send_coverart", "%d", (int) glMRConfig.SendCoverArt);
-	XMLUpdateNode(doc, common, force, "remove_timeout", "%d", (int) glMRConfig.RemoveTimeout);
-	XMLUpdateNode(doc, common, force, "alac_encode", "%d", (int) glMRConfig.AlacEncode);
-	XMLUpdateNode(doc, common, force, "encryption", "%d", (int) glMRConfig.Encryption);
-	XMLUpdateNode(doc, common, force, "read_ahead", "%d", (int) glMRConfig.ReadAhead);
+	XMLUpdateNode(doc, root, false, "interface", glInterface);
+	XMLUpdateNode(doc, root, false, "ports", "%hu:%hu", glPortBase, glPortRange);
+	XMLUpdateNode(doc, root, false, "credentials_path", glCredentialsPath);
+	XMLUpdateNode(doc, root, false, "credentials", "%d", glCredentials);
+
+	XMLUpdateNode(doc, common, false, "enabled", "%d", (int) glMRConfig.Enabled);
+	XMLUpdateNode(doc, common, false, "volume_feedback", "%d", (int) glMRConfig.VolumeFeedback);
+	XMLUpdateNode(doc, common, false, "volume_mode", "%d", (int) glMRConfig.VolumeMode);
+	XMLUpdateNode(doc, common, false, "send_metadata", "%d", (int) glMRConfig.SendMetaData);
+	XMLUpdateNode(doc, common, false, "send_coverart", "%d", (int) glMRConfig.SendCoverArt);
+	XMLUpdateNode(doc, common, false, "remove_timeout", "%d", (int) glMRConfig.RemoveTimeout);
+	XMLUpdateNode(doc, common, false, "alac_encode", "%d", (int) glMRConfig.AlacEncode);
+	XMLUpdateNode(doc, common, false, "encryption", "%d", (int) glMRConfig.Encryption);
+	XMLUpdateNode(doc, common, false, "read_ahead", "%d", (int) glMRConfig.ReadAhead);
 
 	for (int i = 0; i < MAX_RENDERERS; i++) {
 		IXML_Node *dev_node;
@@ -97,22 +95,14 @@ void SaveConfig(char *name, void *ref, int mode) {
 		if (!glMRDevices[i].Running) continue;
 		else p = &glMRDevices[i];
 
-		// existing device, keep param and update "name" if LMS has requested it
-		if (old_doc && ((dev_node = (IXML_Node*) FindMRConfig(old_doc, p->UDN)) != NULL)) {
-			ixmlDocument_importNode(doc, dev_node, true, &dev_node);
-			ixmlNode_appendChild((IXML_Node*) root, dev_node);
-
-			XMLUpdateNode(doc, dev_node, true, "friendly_name", p->FriendlyName);
-			XMLUpdateNode(doc, dev_node, true, "name", p->Config.Name);
-			if (*p->Config.Credentials) XMLUpdateNode(doc, dev_node, true, "credentials", p->Config.Credentials);
-		}
 		// new device, add nodes
-		else {
+		if (!old_doc || !FindMRConfig(old_doc, p->UDN)) {
 			dev_node = XMLAddNode(doc, root, "device", NULL);
 			XMLAddNode(doc, dev_node, "udn", p->UDN);
 			XMLAddNode(doc, dev_node, "name", p->Config.Name);
 			XMLAddNode(doc, dev_node, "friendly_name", p->FriendlyName);
-			if (*p->Config.Credentials) XMLAddNode(doc, dev_node, "credentials", p->Config.Credentials);
+			XMLAddNode(doc, dev_node, "credentials", p->Config.Credentials);
+			if (*p->Config.RaopCredentials) XMLAddNode(doc, dev_node, "raop_credentials", p->Config.RaopCredentials);
 			//XMLAddNode(doc, dev_node, "mac", "%02x:%02x:%02x:%02x:%02x:%02x", );
 			XMLAddNode(doc, dev_node, "enabled", "%d", (int) p->Config.Enabled);
 		}
@@ -158,7 +148,7 @@ static void LoadConfigItem(tMRConfig *Conf, char *name, char *val) {
 	if (!strcmp(name, "enabled")) Conf->Enabled = atol(val);
 	if (!strcmp(name, "remove_timeout")) Conf->RemoveTimeout = atol(val);
 	if (!strcmp(name, "encryption")) Conf->Encryption = atol(val);
-	if (!strcmp(name, "credentials")) strcpy(Conf->Credentials, val);
+	if (!strcmp(name, "raop_credentials")) strcpy(Conf->RaopCredentials, val);
 	if (!strcmp(name, "read_ahead")) Conf->ReadAhead = atol(val);
 	if (!strcmp(name, "send_metadata")) Conf->SendMetaData = atol(val);
 	if (!strcmp(name, "send_coverart")) Conf->SendCoverArt = atol(val);
@@ -172,7 +162,9 @@ static void LoadConfigItem(tMRConfig *Conf, char *name, char *val) {
 static void LoadGlobalItem(char *name, char *val) {
 	if (!val) return;
 
-	if (!strcmp(name, "interface")) strcpy(glInterface, val);
+	if (!strcmp(name, "interface")) strncpy(glInterface, val, sizeof(glInterface));
+	if (!strcmp(name, "credentials")) glCredentials = atol(val);
+	if (!strcmp(name, "credentials_path")) strncpy(glCredentialsPath, val, sizeof(glCredentialsPath) - 1);
 	if (!strcmp(name, "slimproto_log")) slimproto_loglevel = debug2level(val);
 	if (!strcmp(name, "stream_log")) stream_loglevel = debug2level(val);
 	if (!strcmp(name, "output_log")) output_loglevel = debug2level(val);

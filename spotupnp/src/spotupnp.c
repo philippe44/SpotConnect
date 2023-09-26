@@ -55,6 +55,8 @@ struct sMR			*glMRDevices;
 int					glMaxDevices = MAX_DEVICES;
 uint16_t			glPortBase, glPortRange;
 char				glInterface[128] = "?";
+char				glCredentialsPath[STR_LEN];
+bool				glCredentials;
 
 log_level	main_loglevel = lINFO;
 log_level	util_loglevel = lWARN;
@@ -63,6 +65,7 @@ log_level	spot_loglevel = lINFO;
 
 tMRConfig			glMRConfig = {
 							true,		// Enabled
+							"",			// Credentials
 							"",      	// Name
 							{0, 0, 0, 0, 0, 0 }, // MAC
 							1,			// UPnPMax
@@ -128,7 +131,7 @@ static struct in_addr 	glHost;
 static char*			glExcluded = NULL;
 static char*			glExcludedModelNumber = NULL;
 static char*			glIncludedModelNumbers = NULL;
-static char				*glPidFile = NULL;
+static char*			glPidFile = NULL;
 static bool	 			glAutoSaveConfigFile = false;
 static bool				glGracefullShutdown = true;
 static bool				glDiscovery = false;
@@ -137,33 +140,40 @@ static pthread_cond_t  	glUpdateCond;
 static pthread_t 		glMainThread, glUpdateThread;
 static cross_queue_t	glUpdateQueue;
 static bool				glInteractive = true;
-static char				*glLogFile;
+static char*			glLogFile;
 static uint16_t			glPort;
-static void				*glConfigID = NULL;
+static void*			glConfigID = NULL;
 static char				glConfigName[STR_LEN] = "./config.xml";
+static int				glUpdated;
+static char*			glUserName;
+static char*			glPassword;
 
 static char usage[] =
 
 			VERSION "\n"
 		   "See -t for license terms\n"
 		   "Usage: [options]\n"
-		   "  -b <ip>[:<port>]\tnetwork interface and UPnP port to use\n"
-		   "  -a <port>[:<count>]\tset inbound port and range for RTP and HTTP\n"
-		   "  -c <mp3[:<rate>]|flc[:0..9]|wav|pcm>\taudio format send to player\n"
-		   "  -r <96|160|320>\tset Spotify vorbis codec rate\n"
-		   "  -l \t\t\tsend continuous audio stream instead of separated tracks\n"
-		   "  -g <-3|-1|0>\t\tHTTP content-length mode (-3:chunked, -1:none, 0:fixed)\n"
-		   "  -e \t\t\t disable gapless\n"
-		   "  -u <version>\tset the maximum UPnP version for search (default 1)\n"
-		   "  -x <config file>\tread config from file (default is ./config.xml)\n"
-		   "  -i <config file>\tdiscover players, save <config file> and exit\n"
-		   "  -I \t\t\tauto save config at every network scan\n"
-		   "  -f <logfile>\t\twrite debug to logfile\n"
-		   "  -p <pid file>\t\twrite PID in file\n"
-		   "  -m <n1,n2...>\t\texclude devices whose model include tokens\n"
-		   "  -n <m1,m2,...>\texclude devices whose name includes tokens\n"
-		   "  -o <m1,m2,...>\tinclude only listed models; overrides -m and -n (use <NULL> if player don't return a model)\n"
-		   "  -d <log>=<level>\tSet logging level, logs: all|main|util|upnp, level: error|warn|info|debug|sdebug\n"
+		   "  -b <ip>[:<port>]     network interface and UPnP port to use\n"
+		   "  -a <port>[:<count>]  set inbound port and range for RTP and HTTP\n"
+		   "  -r <96|160|320>      set Spotify vorbis codec rate\n"
+		   "  -J <path>            path to Spotify credentials files\n"
+		   "  -j  	               store Spotify credentials in XML config file\n"
+		   "  -U <user>            Spotify username\n"
+		   "  -P <password>        Spotify password\n"
+		   "  -l                   send continuous audio stream instead of separated tracks\n"
+		   "  -g <-3|-1|0>         HTTP content-length mode (-3:chunked, -1:none, 0:fixed)\n"
+		   "  -e                   disable gapless\n"
+		   "  -u <version>         set the maximum UPnP version for search (default 1)\n"
+		   "  -x <config file>     read config from file (default is ./config.xml)\n"
+		   "  -i <config file>     discover players, save <config file> and exit\n"
+		   "  -I                   auto save config at every network scan\n"
+		   "  -f <logfile>         write debug to logfile\n"
+		   "  -p <pid file>        write PID in file\n"
+		   "  -m <n1,n2...>        exclude devices whose model include tokens\n"
+		   "  -n <m1,m2,...>       exclude devices whose name includes tokens\n"
+		   "  -o <m1,m2,...>       include only listed models; overrides -m and -n (use <NULL> if player don't return a model)\n"
+		   "  -d <log>=<level>     Set logging level, logs: all|main|util|upnp, level: error|warn|info|debug|sdebug\n"
+		   "  -c <mp3[:<rate>]|flc[:0..9]|wav|pcm> audio format send to player\n"
 
 #if LINUX || FREEBSD
 		   "  -z \t\t\tDaemonize\n"
@@ -303,6 +313,28 @@ void shadowRequest(struct shadowPlayer *shadow, enum spotEvent event, ...) {
 	}
 
 	switch (event) {
+	case SPOT_CREDENTIALS: {
+		char* Credentials = va_arg(args, char*);
+
+		// store credentials in dedicated file
+		if (glCredentialsPath) {
+			char* name;
+			asprintf(&name, "%s/spotupnp-%08x.json", glCredentialsPath, hash32(Device->UDN));
+			FILE* file = fopen(name, "w");
+			free(name);
+			if (file) {
+				fputs(Credentials, file);
+				fclose(file);
+			}
+		}
+
+		// store credentials in XML config file
+		if (glCredentials && glAutoSaveConfigFile) {
+			glUpdated++;
+			strncpy(Device->Config.Credentials, Credentials, sizeof(Device->Config.Credentials) - 1);
+		}
+		break;
+	}
 	case SPOT_STOP:
 		LOG_INFO("[%p]: Stop", Device);
 		if (Device->SpotState != SPOT_STOP) {
@@ -879,8 +911,8 @@ static void *UpdateThread(void *args) {
 							Device->Master = NULL;
 							char id[6 * 2 + 1] = { 0 };
 							for (int i = 0; i < 6; i++) sprintf(id + i * 2, "%02x", Device->Config.mac[i]);
-							Device->SpotPlayer = spotCreatePlayer(Device->Config.Name, id, glHost, Device->Config.VorbisRate, Device->Config.Codec, 
-																  Device->Config.Flow, Device->Config.HTTPContentLength, 
+							Device->SpotPlayer = spotCreatePlayer(Device->Config.Name, id, glCredentials ? Device->Config.Credentials : "", glHost, Device->Config.VorbisRate,
+																  Device->Config.Codec, Device->Config.Flow, Device->Config.HTTPContentLength, 
 																  (struct shadowPlayer*) Device, &Device->Mutex);
 							pthread_mutex_unlock(&Device->Mutex);
 						} else if (Master && (!Device->Master || Device->Master == Device)) {
@@ -934,8 +966,8 @@ static void *UpdateThread(void *args) {
 					// create a new Spotify Connect device
 					char id[6*2+1] = { 0 };
 					for (int i = 0; i < 6; i++) sprintf(id + i*2, "%02x", Device->Config.mac[i]);
-					Device->SpotPlayer = spotCreatePlayer(Device->Config.Name, id, glHost, Device->Config.VorbisRate, Device->Config.Codec, 
-														  Device->Config.Flow, Device->Config.HTTPContentLength, 
+					Device->SpotPlayer = spotCreatePlayer(Device->Config.Name, id, glCredentials ? Device->Config.Credentials : "", glHost, Device->Config.VorbisRate,
+														  Device->Config.Codec, Device->Config.Flow, Device->Config.HTTPContentLength, 
 														  (struct shadowPlayer*) Device, &Device->Mutex);
 					if (!Device->SpotPlayer) {
 						LOG_ERROR("[%p]: cannot create Spotify instance (%s)", Device, Device->Config.Name);
@@ -945,8 +977,9 @@ static void *UpdateThread(void *args) {
 				}
 
 cleanup:
-				if (Updated && (glAutoSaveConfigFile || glDiscovery)) {
+				if ((Updated || glUpdated) && (glAutoSaveConfigFile || glDiscovery)) {
 					LOG_DEBUG("Updating configuration %s", glConfigName);
+					if (glUpdated) glUpdated--;
 					SaveConfig(glConfigName, glConfigID, false);
 				}
 
@@ -1045,6 +1078,17 @@ static bool AddMRDevice(struct sMR* Device, char* UDN, IXML_Document* DescDoc, c
 
 	strcpy(Device->UDN, UDN);
 	strcpy(Device->DescDocURL, location);
+
+	if (*glCredentialsPath) {
+		char* name;
+		asprintf(&name, "%s/spotupnp-%08x.json", glCredentialsPath, hash32(Device->UDN));
+		FILE* file = fopen(name, "r");
+		free(name);
+		if (file) {
+			fgets(Device->Config.Credentials, sizeof(Device->Config.Credentials), file);
+			fclose(file);
+		}
+	}
 
 	memset(&Device->MetaData, 0, sizeof(Device->MetaData));
 	memset(&Device->Service, 0, sizeof(struct sService) * NB_SRV);
@@ -1216,7 +1260,7 @@ static bool Start(bool cold) {
 	glPort = UpnpGetServerPort();
 
 	// start cspot
-	spotOpen(glPortBase, glPortRange);
+	spotOpen(glPortBase, glPortRange, glUserName, glPassword);
 
 	LOG_INFO("Binding to %s:%hu", inet_ntoa(glHost), glPort);
 
@@ -1333,10 +1377,10 @@ bool ParseArgs(int argc, char **argv) {
 
 	while (optind < argc && strlen(argv[optind]) >= 2 && argv[optind][0] == '-') {
 		char *opt = argv[optind] + 1;
-		if (strstr("abxdpifmnocugr", opt) && optind < argc - 1) {
+		if (strstr("abxdpifmnocugrJUP", opt) && optind < argc - 1) {
 			optarg = argv[optind + 1];
 			optind += 2;
-		} else if (strstr("tzZIkle", opt) || opt[0] == '-') {
+		} else if (strstr("tzZIklej", opt) || opt[0] == '-') {
 			optarg = NULL;
 			optind += 1;
 		} else {
@@ -1353,6 +1397,12 @@ bool ParseArgs(int argc, char **argv) {
 			break;
 		case 'f':
 			glLogFile = optarg;
+			break;
+		case 'J':
+			strncpy(glCredentialsPath, optarg, sizeof(glCredentialsPath) - 1);
+			break;
+		case 'j':
+			glCredentials = true;
 			break;
 		case 'c':
 			strcpy(glMRConfig.Codec, optarg);
@@ -1396,6 +1446,12 @@ bool ParseArgs(int argc, char **argv) {
 			break;
 		case 'g':
 			glMRConfig.HTTPContentLength = atoi(optarg);
+			break;
+		case 'U':
+			glUserName = optarg;
+			break;
+		case 'P':
+			glPassword = optarg;
 			break;
 #if LINUX || FREEBSD
 		case 'z':

@@ -45,8 +45,7 @@ void SaveConfig(char *name, void *ref, bool full) {
 		if (list) ixmlNodeList_free(list);
 		common = (IXML_Node*) ixmlDocument_getElementById((IXML_Document*) root, "common");
 		proto = (IXML_Node*) ixmlDocument_getElementById((IXML_Document*) common, "protocolInfo");
-	}
-	else {
+	} else {
 		root = XMLAddNode(doc, NULL, "spotupnp", NULL);
 		common = (IXML_Node*) XMLAddNode(doc, root, "common", NULL);
 		proto = (IXML_Node*) XMLAddNode(doc, common, "protocolInfo", NULL);
@@ -58,6 +57,8 @@ void SaveConfig(char *name, void *ref, bool full) {
 	XMLUpdateNode(doc, root, false, "log_limit", "%d", (int32_t) glLogLimit);
 	XMLUpdateNode(doc, root, false, "max_players", "%d", (int) glMaxDevices);
 	XMLUpdateNode(doc, root, false, "interface", glInterface);
+	XMLUpdateNode(doc, root, false, "credentials_path", glCredentialsPath);
+	XMLUpdateNode(doc, root, false, "credentials", "%d", glCredentials);
 	XMLUpdateNode(doc, root, false, "ports", "%hu:%hu", glPortBase, glPortRange);
 
 	XMLUpdateNode(doc, common, false, "enabled", "%d", (int) glMRConfig.Enabled);
@@ -91,6 +92,7 @@ void SaveConfig(char *name, void *ref, bool full) {
 		if (!old_doc || !FindMRConfig(old_doc, p->UDN)) {
 			dev_node = XMLAddNode(doc, root, "device", NULL);
 			XMLAddNode(doc, dev_node, "udn", p->UDN);
+			XMLAddNode(doc, dev_node, "credentials", p->Config.Credentials);
 			XMLAddNode(doc, dev_node, "name", p->Config.Name);
 			XMLAddNode(doc, dev_node, "mac", "%02x:%02x:%02x:%02x:%02x:%02x", p->Config.mac[0],
 						p->Config.mac[1], p->Config.mac[2], p->Config.mac[3], p->Config.mac[4], p->Config.mac[5]);
@@ -138,6 +140,7 @@ static void LoadConfigItem(tMRConfig *Conf, char *name, char *val) {
 	if (!strcmp(name, "flow")) Conf->Flow = atoi(val);
 	if (!strcmp(name, "gapless")) Conf->Gapless = atoi(val);
 	if (!strcmp(name, "artwork")) strcpy(Conf->ArtWork, val);
+	if (!strcmp(name, "credentials")) strcpy(Conf->Credentials, val);
 	if (!strcmp(name, "name")) strcpy(Conf->Name, val);
 	if (!strcmp(name, "mac"))  {
 		unsigned mac[6];
@@ -165,8 +168,10 @@ static void LoadGlobalItem(char *name, char *val) {
 	if (!strcmp(name, "util_log")) util_loglevel = debug2level(val);
 	if (!strcmp(name, "log_limit")) glLogLimit = atol(val);
 	if (!strcmp(name, "max_players")) glMaxDevices = atol(val);
-	if (!strcmp(name, "interface")) strcpy(glInterface, val);
+	if (!strcmp(name, "interface")) strncpy(glInterface, val, sizeof(glInterface) - 1);
 	if (!strcmp(name, "ports")) sscanf(val, "%hu:%hu", &glPortBase, &glPortRange);
+	if (!strcmp(name, "credentials")) glCredentials = atol(val);
+	if (!strcmp(name, "credentials_path")) strncpy(glCredentialsPath, val, sizeof(glCredentialsPath) - 1);
  }
 
 /*----------------------------------------------------------------------------*/

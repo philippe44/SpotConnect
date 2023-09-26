@@ -61,6 +61,8 @@ char				glExcludedModels[STR_LEN] = "aircast,airupnp,shairtunes2,airesp32,";
 char				glIncludedNames[STR_LEN];
 char				glExcludedNames[STR_LEN];
 struct sMR			glMRDevices[MAX_RENDERERS];
+char				glCredentialsPath[STR_LEN];
+bool				glCredentials;
 
 log_level	slimproto_loglevel = lINFO;
 log_level	stream_loglevel = lWARN;
@@ -74,6 +76,7 @@ bool 		log_cmdline = false;
 
 tMRConfig			glMRConfig = {
 							true,			 // Enabled
+							"",				 // Credentials
 							"",				 // Name
 							{0, 0, 0, 0, 0, 0 }, // MAC
 							true,			 // sendMetaData
@@ -81,7 +84,7 @@ tMRConfig			glMRConfig = {
 							160,			 // VorbisRate
 							120,			 // RemoveTimeout
 							false,			 // Encryption
-							"",				 // Credentials
+							"",				 // RaopCredentials
 							2000,			 // ReadAhead
 							2,				 // VolumeMode = HARDWARE
 							VOLUME_FEEDBACK, // VolumeFeedback
@@ -114,25 +117,33 @@ static void					*glConfigID = NULL;
 static char					glConfigName[STR_LEN] = "./config.xml";
 static struct in_addr 		glHost;
 static bool					glPairing;
+static int					glUpdated;
+static char*				glUserName;
+static char*				glPassword;
+
 static char usage[] =
 
 		VERSION "\n"
 		"See -t for license terms\n"
 		"Usage: [options]\n"
-		"  -b <ip>\tnetwork interface/IP address to bind to\n"
-		"  -a <port>[:<count>]\tset inbound port and range for RTP and HTTP\n"
-		"  -c <alac[|pcm>\taudio format send to player\n"
-		"  -r <96|160|320>\tset Spotify vorbis codec rate\n"
-		"  -x <config file>\tread config from file (default is ./config.xml)\n"
-		"  -i <config file>\tdiscover players, save <config file> and exit\n"
-		"  -I \t\t\tauto save config at every network scan\n"
-		"  -f <logfile>\t\twrite debug to logfile\n"
-		"  -l \t\t\tAppleTV pairing\n"
-		"  -p <pid file>\t\twrite PID in file\n"
-		"  -m <n1,n2...>\t\texclude devices whose model include tokens\n"
-		"  -n <m1,m2,...>\texclude devices whose name includes tokens\n"
-		"  -o <m1,m2,...>\tinclude only listed models; overrides -m and -n (use <NULL> if player don't return a model)\n"
-		"  -d <log>=<level>\tSet logging level, logs: all|main|util|upnp, level: error|warn|info|debug|sdebug\n"
+		"  -b <ip>             network interface/IP address to bind to\n"
+		"  -a <port>[:<count>] set inbound port and range for RTP and HTTP\n"
+		"  -J <path>           path to Spotify credentials files\n"
+		"  -j  	               store Spotify credentials in XML config file\n"
+		"  -U <user>           Spotify username\n"
+		"  -P <password>       Spotify password\n"
+		"  -c <alac[|pcm>      audio format send to player\n"
+		"  -r <96|160|320>     set Spotify vorbis codec rate\n"
+		"  -x <config file>    read config from file (default is ./config.xml)\n"
+		"  -i <config file>    discover players, save <config file> and exit\n"
+		"  -I                  auto save config at every network scan\n"
+		"  -f <logfile>        write debug to logfile\n"
+		"  -l                  AppleTV pairing\n"
+		"  -p <pid file>       write PID in file\n"
+		"  -m <n1,n2...>       exclude devices whose model include tokens\n"
+		"  -n <m1,m2,...>      exclude devices whose name includes tokens\n"
+		"  -o <m1,m2,...>      include only listed models; overrides -m and -n (use <NULL> if player don't return a model)\n"
+		"  -d <log>=<level>    Set logging level, logs: all|main|util|upnp, level: error|warn|info|debug|sdebug\n"
 
 #if LINUX || FREEBSD || SUNOS
 		   "  -z \t\t\tDaemonize\n"
@@ -215,6 +226,29 @@ void shadowRequest(struct shadowPlayer* shadow, enum spotEvent event, ...) {
 	pthread_mutex_lock(&Device->Mutex);
 
 	switch (event) {
+
+	case SPOT_CREDENTIALS: {
+		char* Credentials = va_arg(args, char*);
+
+		// store credentials in dedicated file
+		if (glCredentialsPath) {
+			char* name;
+			asprintf(&name, "%s/spotupnp-%08x.json", glCredentialsPath, hash32(Device->UDN));
+			FILE* file = fopen(name, "w");
+			free(name);
+			if (file) {
+				fputs(Credentials, file);
+				fclose(file);
+			}
+		}
+
+		// store credentials in XML config file
+		if (glCredentials && glAutoSaveConfigFile) {
+			glUpdated++;
+			strncpy(Device->Config.Credentials, Credentials, sizeof(Device->Config.Credentials) - 1);
+		}
+		break;
+	}
 	case SPOT_LOAD:
 		LOG_INFO("[%p]: spotify LOAD request", Device);
 		raopcl_connect(Device->Raop, Device->PlayerIP, Device->PlayerPort, true);
@@ -386,8 +420,8 @@ static bool mDNSsearchCallback(mdnssd_service_t *slist, void *cookie, bool *stop
 			char id[6 * 2 + 1] = { 0 };
 			for (int i = 0; i < 6; i++) sprintf(id + i * 2, "%02x", Device->Config.MAC[i]);
 			if (!*(Device->Config.Name)) sprintf(Device->Config.Name, "%s+", Device->FriendlyName);
-			Device->SpotPlayer = spotCreatePlayer(Device->Config.Name, id, glHost, Device->Config.VorbisRate, 
-												  FRAMES_PER_BLOCK, Device->Config.ReadAhead, (struct shadowPlayer*)Device);
+			Device->SpotPlayer = spotCreatePlayer(Device->Config.Name, id, glCredentials ? Device->Config.Credentials : "", glHost, 
+												  Device->Config.VorbisRate, FRAMES_PER_BLOCK, Device->Config.ReadAhead, (struct shadowPlayer*)Device);
 			Updated = true;
 		}
 	}
@@ -395,8 +429,9 @@ static bool mDNSsearchCallback(mdnssd_service_t *slist, void *cookie, bool *stop
 	UpdateDevices();
 
 	// save config file if needed (only when creating/changing config items devices)
-	if ((Updated && glAutoSaveConfigFile) || glDiscovery) {
+	if (((Updated || glUpdated) && glAutoSaveConfigFile) || glDiscovery) {
 		if (!glDiscovery) LOG_INFO("Updating configuration %s", glConfigName);
+		if (glUpdated) glUpdated--;
 		SaveConfig(glConfigName, glConfigID, glDiscovery ? CONFIG_CREATE : CONFIG_UPDATE);
 	}
 
@@ -478,8 +513,8 @@ static bool AddRaopDevice(struct sMR *Device, mdnssd_service_t *s) {
 	}
 
 	if (am && strcasestr(am, "appletv") && pk && *pk) {
-		if (*Device->Config.Credentials) {
-			LOG_INFO("[%p]: AppleTV with valid authentication key %s", Device, Device->Config.Credentials);
+		if (*Device->Config.RaopCredentials) {
+			LOG_INFO("[%p]: AppleTV with valid authentication key %s", Device, Device->Config.RaopCredentials);
 		} else {
 			LOG_INFO("[%p]: AppleTV with no authentication key, create one using '-l' option", Device);
 		}
@@ -503,6 +538,17 @@ static bool AddRaopDevice(struct sMR *Device, mdnssd_service_t *s) {
 
 	strcpy(Device->UDN, s->name);
 	sprintf(Device->ActiveRemote, "%u", hash32(Device->UDN));
+
+	if (*glCredentialsPath) {
+		char* name;
+		asprintf(&name, "%s/spotraop-%08x.json", glCredentialsPath, hash32(Device->UDN));
+		FILE* file = fopen(name, "r");
+		free(name);
+		if (file) {
+			fgets(Device->Config.Credentials, sizeof(Device->Config.Credentials), file);
+			fclose(file);
+		}
+	}
 
 	strcpy(Device->FriendlyName, s->hostname);
 	p = strcasestr(Device->FriendlyName, ".local");
@@ -546,7 +592,7 @@ static bool AddRaopDevice(struct sMR *Device, mdnssd_service_t *s) {
 								 glDACPid, Device->ActiveRemote,
 								 Device->Config.AlacEncode ? RAOP_ALAC : RAOP_ALAC_RAW , FRAMES_PER_BLOCK,
 								 (uint32_t) MS2TS(Device->Config.ReadAhead, SampleRate ? atoi(SampleRate) : 44100),
-								 Crypto, Auth, Device->Config.Credentials, Cipher, md,
+								 Crypto, Auth, Device->Config.RaopCredentials, Cipher, md,
 								 SampleRate ? atoi(SampleRate) : 44100,
 								 SampleSize ? atoi(SampleSize) : 16,
 								 Channels ? atoi(Channels) : 2,
@@ -901,7 +947,7 @@ static bool Start(void) {
 	}
 
 	// start cspot
-	spotOpen(glPortBase, glPortRange);
+	spotOpen(glPortBase, glPortRange, glUserName, glPassword);
 
 	LOG_INFO("Binding to %s", inet_ntoa(glHost));
 
@@ -991,10 +1037,10 @@ static bool ParseArgs(int argc, char **argv) {
 	}
 	while (optind < argc && strlen(argv[optind]) >= 2 && argv[optind][0] == '-') {
 		char *opt = argv[optind] + 1;
-		if (strstr("abcrxifpmnod", opt) && optind < argc - 1) {
+		if (strstr("abcrxifpmnodJUP", opt) && optind < argc - 1) {
 			optarg = argv[optind + 1];
 			optind += 2;
-		} else if (strstr("tzZIkl"
+		} else if (strstr("tzZIklj"
 #if defined(RESAMPLE)
 						  "uR"
 #endif
@@ -1049,6 +1095,18 @@ static bool ParseArgs(int argc, char **argv) {
 			break;
 		case 'l':
 			glPairing = true;
+			break;
+		case 'J':
+			strncpy(glCredentialsPath, optarg, sizeof(glCredentialsPath) - 1);
+			break;
+		case 'j':
+			glCredentials = true;
+			break;
+		case 'U':
+			glUserName = optarg;
+			break;
+		case 'P':
+			glPassword = optarg;
 			break;
 #if LINUX || FREEBSD || SUNOS
 		case 'z':
@@ -1166,7 +1224,7 @@ int main(int argc, char *argv[])
 			if (!UDN || !secret) continue;
 			for (int i = 0; i < MAX_RENDERERS; i++) {
 				if (glMRDevices[i].Running && !strcasecmp(glMRDevices[i].UDN, UDN)) {
-					strcpy(glMRDevices[i].Config.Credentials, secret);
+					strcpy(glMRDevices[i].Config.RaopCredentials, secret);
 					SaveConfig(glConfigName, glConfigID, CONFIG_UPDATE);
 					break;
 				}

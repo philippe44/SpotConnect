@@ -50,6 +50,7 @@ struct sService {
 typedef struct sMRConfig
 {
 	bool		Enabled;
+	char		Credentials[1024];
 	char		Name[STR_LEN];
 	uint8_t		mac[6];
 	int			UPnPMax;
@@ -119,6 +120,8 @@ extern struct sMR			*glMRDevices;
 extern int					glMaxDevices;
 extern char					glInterface[128];
 extern unsigned short		glPortBase, glPortRange;
+extern char					glCredentialsPath[STR_LEN];
+extern bool					glCredentials;
 
 int MasterHandler(Upnp_EventType EventType, const void *Event, void *Cookie);
 int ActionHandler(Upnp_EventType EventType, const void *Event, void *Cookie);

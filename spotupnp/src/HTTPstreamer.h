@@ -86,6 +86,7 @@ public:
     cspot::TrackInfo trackInfo;
     std::string trackUnique;
     int64_t offset;
+    inline static uint16_t portBase = 0, portRange = 0;
 
     HTTPstreamer(struct in_addr addr, std::string id, unsigned index, std::string codec, 
                  bool flow, int64_t contentLength, 

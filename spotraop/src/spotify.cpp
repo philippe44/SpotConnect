@@ -37,8 +37,6 @@ extern "C" {
 
 #define BYTES_PER_FRAME 4
 
-static uint16_t portBase, portRange;
-
 /****************************************************************************************
  * Player's main class  & task
  */
@@ -50,6 +48,7 @@ private:
     std::string streamTrackUnique;
     std::atomic<bool> isPaused = true;
     std::atomic<bool> isRunning = false, isConnected = false;
+    std::string credentials;
        
     std::string name;
     struct in_addr addr;
@@ -83,19 +82,21 @@ private:
 public:
     typedef enum { TRACK_INIT, TRACK_READY, TRACK_STREAMING, TRACK_END } TrackStatus;
     std::atomic<TrackStatus> trackStatus = TRACK_INIT;
+    inline static uint16_t portBase = 0, portRange = 0;
+    inline static std::string username = "", password = "";
 
-    CSpotPlayer(char* name, char* id, struct in_addr addr, AudioFormat audio, 
+    CSpotPlayer(char* name, char* id, char *credentials, struct in_addr addr, AudioFormat audio, 
                 size_t frameSize, uint32_t delay, struct shadowPlayer* shadow);
     ~CSpotPlayer();
     void disconnect();
     void friend notify(CSpotPlayer *self, enum shadowEvent event, va_list args);
 };
 
-CSpotPlayer::CSpotPlayer(char* name, char* id, struct in_addr addr, AudioFormat format, 
+CSpotPlayer::CSpotPlayer(char* name, char* id, char *credentials, struct in_addr addr, AudioFormat format, 
                          size_t frameSize, uint32_t delay, struct shadowPlayer* shadow) 
             : bell::Task("playerInstance", 48 * 1024, 0, 0), 
-             clientConnected(1), addr(addr), name(name), shadow(shadow), 
-             frameSize(frameSize), delay(delay) {
+            clientConnected(1), addr(addr), name(name), credentials(credentials), 
+            shadow(shadow), frameSize(frameSize), delay(delay) {
     this->raopClient = shadowRaop(shadow);
 }
 
@@ -118,7 +119,7 @@ CSpotPlayer::~CSpotPlayer() {
     clientConnected.give();
     CSPOT_LOG(info, "player <%s> deletion pending", name.c_str());
 
-    mdnsService->unregisterService();
+    if (mdnsService) mdnsService->unregisterService();
 
     // then just wait    
     std::scoped_lock lock(this->runningMutex);
@@ -363,17 +364,27 @@ void CSpotPlayer::runTask() {
     serverPort = server->getListeningPorts()[0];
     CSPOT_LOG(info, "Server using actual port %d", serverPort);
 
-    server->registerGet("/spotify_info", [this](struct mg_connection* conn) {
-       return server->makeJsonResponse(this->blob->buildZeroconfInfo());
-    });
+    if (!username.empty() && !password.empty()) {
+        blob->loadUserPass(username, password);
+        clientConnected.give();
+    }
+    else if (!credentials.empty()) {
+        blob->loadJson(credentials);
+        clientConnected.give();
+    }
+    else {
+        server->registerGet("/spotify_info", [this](struct mg_connection* conn) {
+            return server->makeJsonResponse(this->blob->buildZeroconfInfo());
+            });
 
-    server->registerPost("/spotify_info", [this](struct mg_connection* conn) {
-        return postHandler(conn);
-    });
+        server->registerPost("/spotify_info", [this](struct mg_connection* conn) {
+            return postHandler(conn);
+            });
 
-    // Register mdns service, for spotify to find us
-    mdnsService = MDNSService::registerService(blob->getDeviceName(), "_spotify-connect", "_tcp", "", serverPort,
+        // Register mdns service, for spotify to find us
+        mdnsService = MDNSService::registerService(blob->getDeviceName(), "_spotify-connect", "_tcp", "", serverPort,
             { {"VERSION", "1.0"}, {"CPath", "/spotify_info"}, {"Stack", "SP"} });
+    }
 
     // gone with the wind...
     while (isRunning) {
@@ -389,10 +400,13 @@ void CSpotPlayer::runTask() {
         ctx->config.audioFormat = format;
 
         ctx->session->connectWithRandomAp();
-        auto token = ctx->session->authenticate(blob);
+        ctx->config.authData = ctx->session->authenticate(blob);
 
         // Auth successful
-        if (token.size() > 0) {
+        if (ctx->config.authData.size() > 0) {
+            // send credentials to owner in case it wants to do something with them
+            shadowRequest(shadow, SPOT_CREDENTIALS, ctx->getCredentialsJson().c_str());
+
             spirc = std::make_unique<cspot::SpircHandler>(ctx);
             isConnected = true;
 
@@ -454,26 +468,28 @@ void CSpotPlayer::runTask() {
  * C interface functions
  */
 
-void spotOpen(uint16_t portBase, uint16_t portRange) {
+void spotOpen(uint16_t portBase, uint16_t portRange, char *username, char *password) {
     static bool once = false;
     if (!once) {
         bell::setDefaultLogger();
         once = true;
     }
-    ::portBase = portBase;
-    ::portRange = portRange;
+    CSpotPlayer::portBase = portBase;
+    CSpotPlayer::portRange = portRange;
+    if (username) CSpotPlayer::username = username;
+    if (password) CSpotPlayer::password = password;
 }
 
 void spotClose(void) {
 }
 
-struct spotPlayer* spotCreatePlayer(char* name, char *id, struct in_addr addr, int oggRate, size_t frameSize, uint32_t delay, struct shadowPlayer* shadow) {
+struct spotPlayer* spotCreatePlayer(char* name, char *id, char *credentials, struct in_addr addr, int oggRate, size_t frameSize, uint32_t delay, struct shadowPlayer* shadow) {
     AudioFormat format = AudioFormat_OGG_VORBIS_160;
 
     if (oggRate == 320) format = AudioFormat_OGG_VORBIS_320;
     else if (oggRate == 96) format = AudioFormat_OGG_VORBIS_96;
 
-    auto player = new CSpotPlayer(name, id, addr, format, frameSize, delay, shadow);
+    auto player = new CSpotPlayer(name, id, credentials, addr, format, frameSize, delay, shadow);
     if (player->startTask()) return (struct spotPlayer*) player;
 
     delete player;

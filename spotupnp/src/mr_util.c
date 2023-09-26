@@ -121,17 +121,11 @@ struct sMR *GetMaster(struct sMR *Device, char **Name)
 }
 
 /*----------------------------------------------------------------------------*/
-void FlushMRDevices(void)
-{
-	int i;
-
-	for (i = 0; i < glMaxDevices; i++) {
+void FlushMRDevices(void) {
+	for (int i = 0; i < glMaxDevices; i++) {
 		struct sMR *p = &glMRDevices[i];
 		pthread_mutex_lock(&p->Mutex);
 		if (p->Running) {
-			// critical to stop the device otherwise libupnp might wait forever
-			//if (p->RaopState == RAOP_PLAY) AVTStop(p);
-			//raopsr_delete(p->Raop);
 			// device's mutex returns unlocked
 			DelMRDevice(p);
 		} else pthread_mutex_unlock(&p->Mutex);

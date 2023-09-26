@@ -17,7 +17,7 @@
 extern "C" {
 #endif
 
-enum spotEvent{ SPOT_LOAD, SPOT_PLAY, SPOT_VOLUME, SPOT_METADATA };
+enum spotEvent{ SPOT_LOAD, SPOT_PLAY, SPOT_VOLUME, SPOT_METADATA, SPOT_CREDENTIALS };
 enum shadowEvent { SHADOW_PLAY, SHADOW_PAUSE, SHADOW_PLAY_TOGGLE, SHADOW_STOP, SHADOW_NEXT, SHADOW_PREV, SHADOW_VOLUME };
 
 struct spotPlayer;
@@ -27,10 +27,10 @@ struct raopcl_s;
 struct raopcl_s*	shadowRaop(struct shadowPlayer* shadow);
 void				shadowRequest(struct shadowPlayer* shadow, enum spotEvent event, ...);
 
-struct spotPlayer* spotCreatePlayer(char* name, char* id, struct in_addr addr, int audio, 
+struct spotPlayer* spotCreatePlayer(char* name, char* id, char *credentials, struct in_addr addr, int audio, 
 									size_t frameSize, uint32_t delay, struct shadowPlayer* shadow);
 void spotDeletePlayer(struct spotPlayer *spotPlayer);
-void spotOpen(uint16_t portBase, uint16_t portRange);
+void spotOpen(uint16_t portBase, uint16_t portRange, char* username, char* password);
 void spotClose(void);
 void spotNotify(struct spotPlayer* spotPlayer, enum shadowEvent event, ...);
 

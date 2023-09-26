@@ -19,7 +19,7 @@
 #include "cross_util.h"
 #include "spotify.h"
 
-#define VERSION "v0.1.8" " (" __DATE__ " @ " __TIME__ ")"
+#define VERSION "v0.2.0" " (" __DATE__ " @ " __TIME__ ")"
 
 /*----------------------------------------------------------------------------*/
 /* typedefs */
@@ -44,6 +44,7 @@ enum { CONFIG_CREATE, CONFIG_UPDATE, CONFIG_MIGRATE };
 typedef struct sMRConfig
 {
 	bool		Enabled;
+	char		Credentials[1024];
 	char		Name[STR_LEN];
 	uint8_t		MAC[6];
 	bool		SendMetaData;
@@ -51,7 +52,7 @@ typedef struct sMRConfig
 	int			VorbisRate;
 	int			RemoveTimeout;
 	bool		Encryption;
-	char		Credentials[STR_LEN];
+	char		RaopCredentials[STR_LEN];
 	int 		ReadAhead;
 	int			VolumeMode;
 	int			VolumeFeedback;
@@ -82,12 +83,14 @@ struct sMR {
 	bool SkipDir;
 };
 
-extern char 				glInterface[];
+extern char 				glInterface[128];
 extern int32_t				glLogLimit;
 extern tMRConfig			glMRConfig;
 extern struct sMR			glMRDevices[MAX_RENDERERS];
 extern char					glExcluded[STR_LEN];
 extern uint16_t				glPortBase, glPortRange;
+extern char					glCredentialsPath[STR_LEN];
+extern bool					glCredentials;
 
 #ifdef __cplusplus
 extern "C" {

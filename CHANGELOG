@@ -1,3 +1,7 @@
+0.2.0
+ - (spotupnp) add username/password + reusable credentials 
+ - (spotupnp) fix port and range compliance
+ 
 0.1.8
  - (spotupnp) Fix deadlock on bye-bye => DelMRDevice should not try_lock (mutex is already locked and recursive anyway)
  - (spotupnp) unify UPnP utility code with AirConnect
