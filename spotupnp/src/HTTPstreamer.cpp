@@ -121,7 +121,7 @@ HTTPstreamer::HTTPstreamer(struct in_addr addr, std::string id, unsigned index, 
     host.sin_addr = addr;
     host.sin_family = AF_INET;
 
-    for (int count = 0, offset = rand() % portRange; count < portRange; count++, offset++) {
+    for (int count = 0, offset = rand();; count++, offset++) {
         host.sin_port = htons(portBase + (offset % portRange));
         if (!bind(listenSock, (const sockaddr*) &host, sizeof(host))) break;
         if (!portBase || count == portRange) throw std::runtime_error("can't bind on port" + std::string(strerror(errno)));

@@ -805,30 +805,26 @@ static void StartActiveRemote(struct in_addr host) {
 		"OSsi=0x1F5",
 		NULL
 	};
-	struct {
-		uint16_t count, range;
-		uint16_t offset;
-	} aport = { 0 };
-	aport.range = glPortBase ? glPortRange : 1;
-	aport.offset = rand() % aport.range;
-	do {
-		if ((glActiveRemoteSock = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
-			LOG_ERROR("Cannot create ActiveRemote socket", NULL);
-			return;
-		}
-		memset(&addr, 0, sizeof(addr));
-		addr.sin_addr.s_addr = host.s_addr;
-		addr.sin_family = AF_INET;
-		addr.sin_port = htons(glPortBase + ((aport.offset + aport.count++) % aport.range));
-		if (bind(glActiveRemoteSock, (struct sockaddr *) &addr, sizeof(addr)) < 0) {
-			closesocket(glActiveRemoteSock);
-			glActiveRemoteSock = -1;
-		}
-	} while (glActiveRemoteSock < 0 && aport.count < aport.range);
-	if (glActiveRemoteSock < 0) {
-		LOG_ERROR("Cannot bind ActiveRemote: %s", strerror(errno));
+
+	if ((glActiveRemoteSock = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
+		LOG_ERROR("Cannot create ActiveRemote socket", NULL);
 		return;
 	}
+
+	memset(&addr, 0, sizeof(addr));
+	addr.sin_addr.s_addr = host.s_addr;
+	addr.sin_family = AF_INET;
+
+	for (int range = glPortRange ? glPortRange : 1, count = 0, offset = rand();; count++, offset++) {
+		addr.sin_port = htons(glPortBase + (offset % range));
+		if (!bind(glActiveRemoteSock, (struct sockaddr*)&addr, sizeof(addr))) break;
+		if (!glPortBase || count == range) {
+			LOG_ERROR("Cannot bind ActiveRemote: %s", strerror(errno));
+			closesocket(glActiveRemoteSock);
+			return;
+		}
+	};
+
 	getsockname(glActiveRemoteSock, (struct sockaddr *) &addr, &nlen);
 	uint16_t port = ntohs(addr.sin_port);
 	LOG_INFO("DACP port: %d", port);
