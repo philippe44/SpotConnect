@@ -317,7 +317,7 @@ void shadowRequest(struct shadowPlayer *shadow, enum spotEvent event, ...) {
 		char* Credentials = va_arg(args, char*);
 
 		// store credentials in dedicated file
-		if (glCredentialsPath) {
+		if (*glCredentialsPath) {
 			char* name;
 			asprintf(&name, "%s/spotupnp-%08x.json", glCredentialsPath, hash32(Device->UDN));
 			FILE* file = fopen(name, "w");
@@ -911,7 +911,7 @@ static void *UpdateThread(void *args) {
 							Device->Master = NULL;
 							char id[6 * 2 + 1] = { 0 };
 							for (int i = 0; i < 6; i++) sprintf(id + i * 2, "%02x", Device->Config.mac[i]);
-							Device->SpotPlayer = spotCreatePlayer(Device->Config.Name, id, glCredentials ? Device->Config.Credentials : "", glHost, Device->Config.VorbisRate,
+							Device->SpotPlayer = spotCreatePlayer(Device->Config.Name, id, Device->Credentials, glHost, Device->Config.VorbisRate,
 																  Device->Config.Codec, Device->Config.Flow, Device->Config.HTTPContentLength, 
 																  (struct shadowPlayer*) Device, &Device->Mutex);
 							pthread_mutex_unlock(&Device->Mutex);
@@ -966,7 +966,7 @@ static void *UpdateThread(void *args) {
 					// create a new Spotify Connect device
 					char id[6*2+1] = { 0 };
 					for (int i = 0; i < 6; i++) sprintf(id + i*2, "%02x", Device->Config.mac[i]);
-					Device->SpotPlayer = spotCreatePlayer(Device->Config.Name, id, glCredentials ? Device->Config.Credentials : "", glHost, Device->Config.VorbisRate,
+					Device->SpotPlayer = spotCreatePlayer(Device->Config.Name, id, Device->Credentials, glHost, Device->Config.VorbisRate,
 														  Device->Config.Codec, Device->Config.Flow, Device->Config.HTTPContentLength, 
 														  (struct shadowPlayer*) Device, &Device->Mutex);
 					if (!Device->SpotPlayer) {
@@ -1079,13 +1079,17 @@ static bool AddMRDevice(struct sMR* Device, char* UDN, IXML_Document* DescDoc, c
 	strcpy(Device->UDN, UDN);
 	strcpy(Device->DescDocURL, location);
 
+	// get credentials from config file if allowed
+	if (glCredentials) strcpy(Device->Credentials, Device->Config.Credentials);
+
+	// or from separated credential file (has precedence)
 	if (*glCredentialsPath) {
 		char* name;
 		asprintf(&name, "%s/spotupnp-%08x.json", glCredentialsPath, hash32(Device->UDN));
 		FILE* file = fopen(name, "r");
 		free(name);
 		if (file) {
-			fgets(Device->Config.Credentials, sizeof(Device->Config.Credentials), file);
+			fgets(Device->Credentials, sizeof(Device->Credentials), file);
 			fclose(file);
 		}
 	}

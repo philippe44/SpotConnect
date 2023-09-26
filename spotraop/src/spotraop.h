@@ -26,6 +26,7 @@
 /*----------------------------------------------------------------------------*/
 
 #define STR_LEN 256
+#define CREDENTIALS_LEN	1024
 
 #define MAX_PROTO		128
 #define MAX_RENDERERS	32
@@ -39,12 +40,10 @@
 #define DMCP_PREVENT_PLAYBACK	0x01
 #define DMCP_BUSY				0x02
 
-enum { CONFIG_CREATE, CONFIG_UPDATE, CONFIG_MIGRATE };
-
 typedef struct sMRConfig
 {
 	bool		Enabled;
-	char		Credentials[1024];
+	char		Credentials[CREDENTIALS_LEN];
 	char		Name[STR_LEN];
 	uint8_t		MAC[6];
 	bool		SendMetaData;
@@ -65,6 +64,7 @@ struct sMR {
 	bool  Running;
 	uint32_t Expired;
 	tMRConfig Config;
+	char Credentials[CREDENTIALS_LEN];
 	char UDN			[RESOURCE_LENGTH];
 	char FriendlyName	[RESOURCE_LENGTH];
 	struct spotPlayer* SpotPlayer;

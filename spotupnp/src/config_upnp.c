@@ -88,8 +88,12 @@ void SaveConfig(char *name, void *ref, bool full) {
 		if (!glMRDevices[i].Running) continue;
 		else p = &glMRDevices[i];
 
-		// new device, add nodes
-		if (!old_doc || !FindMRConfig(old_doc, p->UDN)) {
+		// new device or new file, add nodes
+		if (old_doc && ((dev_node = FindMRConfig(old_doc, p->UDN)) != NULL)) {
+			ixmlDocument_importNode(doc, dev_node, true, &dev_node);
+			ixmlNode_appendChild((IXML_Node*)root, dev_node);
+			XMLUpdateNode(doc, dev_node, true, "credentials", p->Config.Credentials);
+		} else {
 			dev_node = XMLAddNode(doc, root, "device", NULL);
 			XMLAddNode(doc, dev_node, "udn", p->UDN);
 			XMLAddNode(doc, dev_node, "credentials", p->Config.Credentials);

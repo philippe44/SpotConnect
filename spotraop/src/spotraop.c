@@ -231,9 +231,9 @@ void shadowRequest(struct shadowPlayer* shadow, enum spotEvent event, ...) {
 		char* Credentials = va_arg(args, char*);
 
 		// store credentials in dedicated file
-		if (glCredentialsPath) {
+		if (*glCredentialsPath) {
 			char* name;
-			asprintf(&name, "%s/spotupnp-%08x.json", glCredentialsPath, hash32(Device->UDN));
+			asprintf(&name, "%s/spotraop-%08x.json", glCredentialsPath, hash32(Device->UDN));
 			FILE* file = fopen(name, "w");
 			free(name);
 			if (file) {
@@ -420,8 +420,8 @@ static bool mDNSsearchCallback(mdnssd_service_t *slist, void *cookie, bool *stop
 			char id[6 * 2 + 1] = { 0 };
 			for (int i = 0; i < 6; i++) sprintf(id + i * 2, "%02x", Device->Config.MAC[i]);
 			if (!*(Device->Config.Name)) sprintf(Device->Config.Name, "%s+", Device->FriendlyName);
-			Device->SpotPlayer = spotCreatePlayer(Device->Config.Name, id, glCredentials ? Device->Config.Credentials : "", glHost, 
-												  Device->Config.VorbisRate, FRAMES_PER_BLOCK, Device->Config.ReadAhead, (struct shadowPlayer*)Device);
+			Device->SpotPlayer = spotCreatePlayer(Device->Config.Name, id, Device->Credentials, glHost, Device->Config.VorbisRate, 
+												  FRAMES_PER_BLOCK, Device->Config.ReadAhead, (struct shadowPlayer*)Device);
 			Updated = true;
 		}
 	}
@@ -432,7 +432,7 @@ static bool mDNSsearchCallback(mdnssd_service_t *slist, void *cookie, bool *stop
 	if (((Updated || glUpdated) && glAutoSaveConfigFile) || glDiscovery) {
 		if (!glDiscovery) LOG_INFO("Updating configuration %s", glConfigName);
 		if (glUpdated) glUpdated--;
-		SaveConfig(glConfigName, glConfigID, glDiscovery ? CONFIG_CREATE : CONFIG_UPDATE);
+		SaveConfig(glConfigName, glConfigID, glDiscovery);
 	}
 
 	// we have intentionally not released the slist
@@ -539,13 +539,17 @@ static bool AddRaopDevice(struct sMR *Device, mdnssd_service_t *s) {
 	strcpy(Device->UDN, s->name);
 	sprintf(Device->ActiveRemote, "%u", hash32(Device->UDN));
 
+	// get credentials from config file if allowed
+	if (glCredentials) strcpy(Device->Credentials, Device->Config.Credentials);
+
+	// or from separated credential file (has precedence)
 	if (*glCredentialsPath) {
 		char* name;
 		asprintf(&name, "%s/spotraop-%08x.json", glCredentialsPath, hash32(Device->UDN));
 		FILE* file = fopen(name, "r");
 		free(name);
 		if (file) {
-			fgets(Device->Config.Credentials, sizeof(Device->Config.Credentials), file);
+			fgets(Device->Credentials, sizeof(Device->Credentials), file);
 			fclose(file);
 		}
 	}
@@ -1221,7 +1225,7 @@ int main(int argc, char *argv[])
 			for (int i = 0; i < MAX_RENDERERS; i++) {
 				if (glMRDevices[i].Running && !strcasecmp(glMRDevices[i].UDN, UDN)) {
 					strcpy(glMRDevices[i].Config.RaopCredentials, secret);
-					SaveConfig(glConfigName, glConfigID, CONFIG_UPDATE);
+					SaveConfig(glConfigName, glConfigID, false);
 					break;
 				}
 			}
@@ -1286,7 +1290,7 @@ int main(int argc, char *argv[])
 		if (!strcmp(resp, "save"))	{
 			char name[128];
 			i = scanf("%s", name);
-			SaveConfig(name, glConfigID, CONFIG_UPDATE);
+			SaveConfig(name, glConfigID, false);
 		}
 
 		if (!strcmp(resp, "dump") || !strcmp(resp, "dumpall"))	{

@@ -28,6 +28,7 @@
 /*----------------------------------------------------------------------------*/
 
 #define STR_LEN	256
+#define CREDENTIALS_LEN	1024
 
 #define MAX_PROTO		128
 #define MAX_RENDERERS	32
@@ -50,7 +51,7 @@ struct sService {
 typedef struct sMRConfig
 {
 	bool		Enabled;
-	char		Credentials[1024];
+	char		Credentials[CREDENTIALS_LEN];
 	char		Name[STR_LEN];
 	uint8_t		mac[6];
 	int			UPnPMax;
@@ -83,6 +84,7 @@ struct sMR {
 	uint32_t Magic;
 	bool  Running;
 	tMRConfig Config;
+	char Credentials[CREDENTIALS_LEN];
 	char UDN			[RESOURCE_LENGTH];
 	char DescDocURL		[RESOURCE_LENGTH];
 	char friendlyName	[STR_LEN];
