@@ -117,7 +117,7 @@ static void					*glConfigID = NULL;
 static char					glConfigName[STR_LEN] = "./config.xml";
 static struct in_addr 		glHost;
 static bool					glPairing;
-static int					glUpdated;
+static bool					glUpdated;
 static char*				glUserName;
 static char*				glPassword;
 
@@ -242,9 +242,9 @@ void shadowRequest(struct shadowPlayer* shadow, enum spotEvent event, ...) {
 			}
 		}
 
-		// store credentials in XML config file
+		// store credentials in XML config file if required (small chance of race condition)
 		if (glCredentials && glAutoSaveConfigFile) {
-			glUpdated++;
+			glUpdated = true;
 			strncpy(Device->Config.Credentials, Credentials, sizeof(Device->Config.Credentials) - 1);
 		}
 		break;
@@ -363,7 +363,6 @@ static bool mDNSsearchCallback(mdnssd_service_t *slist, void *cookie, bool *stop
 	struct sMR *Device;
 	mdnssd_service_t *s;
 	uint32_t now = gettime_ms();
-	bool Updated = false;
 
 	for (s = slist; s && glMainRunning; s = s->next) {
 		char *am = GetmDNSAttribute(s->attr, s->attr_count, "am");
@@ -422,16 +421,16 @@ static bool mDNSsearchCallback(mdnssd_service_t *slist, void *cookie, bool *stop
 			if (!*(Device->Config.Name)) sprintf(Device->Config.Name, "%s+", Device->FriendlyName);
 			Device->SpotPlayer = spotCreatePlayer(Device->Config.Name, id, Device->Credentials, glHost, Device->Config.VorbisRate, 
 												  FRAMES_PER_BLOCK, Device->Config.ReadAhead, (struct shadowPlayer*)Device);
-			Updated = true;
+			glUpdated = true;
 		}
 	}
 
 	UpdateDevices();
 
 	// save config file if needed (only when creating/changing config items devices)
-	if (((Updated || glUpdated) && glAutoSaveConfigFile) || glDiscovery) {
+	if ((glUpdated && glAutoSaveConfigFile) || glDiscovery) {
+		glUpdated = false;
 		if (!glDiscovery) LOG_INFO("Updating configuration %s", glConfigName);
-		if (glUpdated) glUpdated--;
 		SaveConfig(glConfigName, glConfigID, glDiscovery);
 	}
 

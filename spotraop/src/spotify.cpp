@@ -49,6 +49,8 @@ private:
     std::atomic<bool> isPaused = true;
     std::atomic<bool> isRunning = false, isConnected = false;
     std::string credentials;
+    enum states { ABORT, LINKED, DISCO };
+    std::atomic<states> state;
        
     std::string name;
     struct in_addr addr;
@@ -88,7 +90,7 @@ public:
     CSpotPlayer(char* name, char* id, char *credentials, struct in_addr addr, AudioFormat audio, 
                 size_t frameSize, uint32_t delay, struct shadowPlayer* shadow);
     ~CSpotPlayer();
-    void disconnect();
+    void disconnect(bool abort = false);
     void friend notify(CSpotPlayer *self, enum shadowEvent event, va_list args);
 };
 
@@ -100,8 +102,8 @@ CSpotPlayer::CSpotPlayer(char* name, char* id, char *credentials, struct in_addr
     this->raopClient = shadowRaop(shadow);
 }
 
-void CSpotPlayer::disconnect() {
-    isConnected = false;
+void CSpotPlayer::disconnect(bool abort) {
+    state = abort ? ABORT : DISCO;
     CSPOT_LOG(info, "Disconnecting %s", name.c_str());
     raopcl_disconnect(raopClient);
 }
@@ -115,7 +117,8 @@ void CSpotPlayer::info2meta(metadata_t *metadata) {
 }
 
 CSpotPlayer::~CSpotPlayer() {
-    isRunning = isConnected = false;
+    isRunning = false;
+    state = ABORT;
     clientConnected.give();
     CSPOT_LOG(info, "player <%s> deletion pending", name.c_str());
 
@@ -345,8 +348,7 @@ void notify(CSpotPlayer* self, enum shadowEvent event, va_list args) {
         self->spirc->setPause(!self->isPaused);
         break;
     case SHADOW_STOP:
-        // @FIXME: is there some case for teardown?
-        self->spirc->setPause(true);
+        self->disconnect(true);
         break;
     default:
         break;
@@ -356,23 +358,24 @@ void notify(CSpotPlayer* self, enum shadowEvent event, va_list args) {
 void CSpotPlayer::runTask() {
     std::scoped_lock lock(this->runningMutex);
     isRunning = true;
+    bool zeroConf = false;
 
-    int serverPort = 0;
-
-    server = std::make_unique<bell::BellHTTPServer>(serverPort);
     blob = std::make_unique<cspot::LoginBlob>(name);
-    serverPort = server->getListeningPorts()[0];
-    CSPOT_LOG(info, "Server using actual port %d", serverPort);
 
     if (!username.empty() && !password.empty()) {
         blob->loadUserPass(username, password);
-        clientConnected.give();
-    }
-    else if (!credentials.empty()) {
+        CSPOT_LOG(info, "User/Password mode");
+    } else if (!credentials.empty()) {
         blob->loadJson(credentials);
-        clientConnected.give();
-    }
-    else {
+        CSPOT_LOG(info, "Reusable credentials mode");
+    } else {
+        int serverPort = 0;
+        server = std::make_unique<bell::BellHTTPServer>(serverPort);
+        serverPort = server->getListeningPorts()[0];
+        zeroConf = true;
+
+        CSPOT_LOG(info, "Server using actual port %d", serverPort);
+
         server->registerGet("/spotify_info", [this](struct mg_connection* conn) {
             return server->makeJsonResponse(this->blob->buildZeroconfInfo());
             });
@@ -389,10 +392,11 @@ void CSpotPlayer::runTask() {
     // gone with the wind...
     while (isRunning) {
         uint64_t keepAlive = 0;
-        clientConnected.wait();
+        if (zeroConf) clientConnected.wait();
 
         // we might just be woken up to exit
         if (!isRunning) break;
+        state = LINKED;
 
         CSPOT_LOG(info, "Spotify client connected for %s", name.c_str());
 
@@ -425,13 +429,13 @@ void CSpotPlayer::runTask() {
             // Start handling mercury messages
             ctx->session->startTask();
 
-            // exit when player has stopped (received a DISC)
-            while (isConnected) {
+            // exit when received an ABORT or a DISCO in ZeroConf mode 
+            while (state == LINKED) {
                 ctx->session->handlePacket();
                 uint64_t now = gettime_ms64();
 
                 // HomePods require a keepalive on RTSP session
-                if (now - keepAlive >= 15 * 1000LL) {
+                if (keepAlive && now - keepAlive >= 15 * 1000LL) {
                     CSPOT_LOG(debug, "keepAlive %s", name.c_str());
                     raopcl_keepalive(raopClient);
                     keepAlive = now;
@@ -440,6 +444,7 @@ void CSpotPlayer::runTask() {
                 if (startTime && now >= startTime) {
                     spirc->notifyAudioReachedPlayback();
                     startTime = 0;
+                    keepAlive = now;
                 } else if (stopTime && gettime_ms64() >= stopTime) {
                     stopTime = 0;
                     raopcl_disconnect(raopClient);
@@ -452,6 +457,12 @@ void CSpotPlayer::runTask() {
                     } else {
                         CSPOT_LOG(info, "teardown RAOP connection on timeout at %d", startOffset);
                     }
+                }
+
+                // make sure keep alive is silent when disconnected 
+                if (state == DISCO && !zeroConf) {
+                    state = LINKED;
+                    keepAlive = 0;
                 }
             }
 

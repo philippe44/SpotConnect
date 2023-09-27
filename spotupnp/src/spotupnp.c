@@ -144,7 +144,7 @@ static char*			glLogFile;
 static uint16_t			glPort;
 static void*			glConfigID = NULL;
 static char				glConfigName[STR_LEN] = "./config.xml";
-static int				glUpdated;
+static bool				glUpdated;
 static char*			glUserName;
 static char*			glPassword;
 
@@ -328,9 +328,9 @@ void shadowRequest(struct shadowPlayer *shadow, enum spotEvent event, ...) {
 			}
 		}
 
-		// store credentials in XML config file
+		// store credentials in XML config file (small chance of race condition)
 		if (glCredentials && glAutoSaveConfigFile) {
-			glUpdated++;
+			glUpdated = true;
 			strncpy(Device->Config.Credentials, Credentials, sizeof(Device->Config.Credentials) - 1);
 		}
 		break;
@@ -823,7 +823,6 @@ static void FreeUpdate(void *_Item) {
 static void *UpdateThread(void *args) {
 	while (glMainRunning) {
 		tUpdate *Update;
-		bool Updated = false;
 
 		pthread_mutex_lock(&glUpdateMutex);
 		pthread_cond_wait(&glUpdateCond, &glUpdateMutex);
@@ -900,7 +899,7 @@ static void *UpdateThread(void *args) {
 							LOG_INFO("[%p]: Device name change %s %s", Device, friendlyName, Device->friendlyName);
 							strcpy(Device->friendlyName, friendlyName);
 							sprintf(Device->Config.Name, "%s+", friendlyName);
-							Updated = true;
+							glUpdated = true;
 						}
 
 						// we are a master (or not a Sonos)
@@ -960,7 +959,7 @@ static void *UpdateThread(void *args) {
 					goto cleanup;
 				}
 				
-				Updated = true;
+				glUpdated = true;
 			
 				if (AddMRDevice(Device, UDN, DescDoc, Update->Data) && !glDiscovery) {
 					// create a new Spotify Connect device
@@ -977,9 +976,9 @@ static void *UpdateThread(void *args) {
 				}
 
 cleanup:
-				if ((Updated || glUpdated) && (glAutoSaveConfigFile || glDiscovery)) {
+				if (glUpdated && (glAutoSaveConfigFile || glDiscovery)) {
+					glUpdated = false;
 					LOG_DEBUG("Updating configuration %s", glConfigName);
-					if (glUpdated) glUpdated--;
 					SaveConfig(glConfigName, glConfigID, false);
 				}
 

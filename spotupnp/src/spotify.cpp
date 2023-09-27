@@ -59,9 +59,10 @@ class CSpotPlayer : public bell::Task {
 private:
     std::string name;
     std::string credentials;
+    enum states { ABORT, LINKED, DISCO };
+    std::atomic<states> state;
 
     std::atomic<bool> isPaused = true;
-    std::atomic<bool> isConnected = false;
     std::atomic<bool> isRunning = false;
     std::mutex runningMutex;
     shadowMutex playerMutex;
@@ -107,7 +108,7 @@ public:
     CSpotPlayer(char* name, char* id, char *credentials, struct in_addr addr, AudioFormat audio, char* codec, bool flow,
         int64_t contentLength, struct shadowPlayer* shadow, pthread_mutex_t* mutex);
     ~CSpotPlayer();
-    void disconnect();
+    void disconnect(bool abort = false);
 
     void friend notify(CSpotPlayer *self, enum shadowEvent event, va_list args);
     bool friend getMetaForUrl(CSpotPlayer* self, const std::string url, metadata_t* metadata);
@@ -123,10 +124,11 @@ CSpotPlayer::CSpotPlayer(char* name, char* id, char *credentials, struct in_addr
 }
 
 CSpotPlayer::~CSpotPlayer() {
-    isRunning = isConnected = false;
+    state = ABORT;
+    isRunning = false;
     CSPOT_LOG(info, "player <%s> deletion pending", name.c_str());
 
-    // unlock ourselves as we are waiting
+    // unlock ourselves as we might be waiting
     clientConnected.give();
 
     // manually unregister mDNS but all other item should be deleted automatically
@@ -434,7 +436,7 @@ void notify(CSpotPlayer *self, enum shadowEvent event, va_list args) {
             self->spirc->updatePositionMs(0);
         } else {
             // disconnect on unexpected STOP (free up player from Spotify)
-            self->disconnect();
+            self->disconnect(true);
         }
         break;
     default:
@@ -442,10 +444,10 @@ void notify(CSpotPlayer *self, enum shadowEvent event, va_list args) {
     }
 }
 
-void CSpotPlayer::disconnect() {
+void CSpotPlayer::disconnect(bool abort) {
     // shared playerMutex is already locked
     CSPOT_LOG(info, "Disconnecting %s", name.c_str());
-    isConnected = false;
+    state = abort ? ABORT : DISCO;
     shadowRequest(shadow, SPOT_STOP);
     streamers.clear();
     player.reset();
@@ -488,22 +490,25 @@ HTTPheaders CSpotPlayer::onHeaders(HTTPheaders request) {
 void CSpotPlayer::runTask() {
     std::scoped_lock lock(this->runningMutex);
     isRunning = true;
+    bool zeroConf = false;
 
-    int serverPort = 0;
-
-    server = std::make_unique<bell::BellHTTPServer>(serverPort);
     blob = std::make_unique<cspot::LoginBlob>(name);
-    serverPort = server->getListeningPorts()[0];
-    CSPOT_LOG(info, "Server using actual port %d", serverPort);
 
     if (!username.empty() && !password.empty()) {
         blob->loadUserPass(username, password);
-        clientConnected.give();
+        CSPOT_LOG(info, "User/Password mode");
     }
     else if (!credentials.empty()) {
         blob->loadJson(credentials);
-        clientConnected.give();
+        CSPOT_LOG(info, "Reusable credentials mode");
     } else {
+        int serverPort = 0;
+        server = std::make_unique<bell::BellHTTPServer>(serverPort);
+        serverPort = server->getListeningPorts()[0];
+        zeroConf = true;
+
+        CSPOT_LOG(info, "ZeroConf mode (listening port %d)", serverPort);
+
         server->registerGet("/spotify_info", [this](struct mg_connection* conn) {
             return server->makeJsonResponse(this->blob->buildZeroconfInfo());
             });
@@ -519,10 +524,12 @@ void CSpotPlayer::runTask() {
 
     // gone with the wind...
     while (isRunning) {
-        clientConnected.wait();
+        // with zeroConf we are active as soon as we received a connection
+        if (zeroConf) clientConnected.wait();
 
         // we might just be woken up to exit
         if (!isRunning) break;
+        state = LINKED;
 
         CSPOT_LOG(info, "Spotify client connected for %s", name.c_str());
 
@@ -538,7 +545,6 @@ void CSpotPlayer::runTask() {
             shadowRequest(shadow, SPOT_CREDENTIALS, ctx->getCredentialsJson().c_str());
 
             spirc = std::make_unique<cspot::SpircHandler>(ctx);
-            isConnected = true;
 
             // set call back to calculate a hash on trackId
             spirc->getTrackPlayer()->setDataCallback(
@@ -555,9 +561,10 @@ void CSpotPlayer::runTask() {
             // Start handling mercury messages
             ctx->session->startTask();
 
-            // exit when player has stopped (received a DISC)
-            while (isConnected) {
+            // exit when received an ABORT or a DISCO in ZeroConf mode 
+            while (state == LINKED) {
                 ctx->session->handlePacket();
+                if (state == DISCO && !zeroConf) state = LINKED;
             }
 
             spirc->disconnect();
