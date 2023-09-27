@@ -5,7 +5,9 @@ SpotConnect can run on any machine that has access to your local network (Window
 
 For UPnP, the audio, after being decoded from vorbis, can be sent in plain, or re-encoded using mp3 or flac. The tracks can be sent one-by one and use the capability of UPnP players to do gapless playback by sending the next track ahead of the current one, but not all players support that or might simply be faulty. There is also a 'flow' mode where all tracks are sent in a continuous stream, similar to a webradio. Note that this mode can be brittle with regard to track position. In 'flow' mode, metadata are likely not to be sent, unlesss player supports 'icy' protocol.
 
-For AirPlay, the audio can be re-encoded using ALAC or left as raw PCM. Note that bridging also works with AppleTV, but you need to create a pairing key. This is done by launching the application with the `-l` option and following instructions. A config file with the required `<credentials>` tag is automatically written to the directory from which the application was launched and will be required for further use. For software-based AirPlay emulators like most cheap knock-off, encryption is required (see below) 
+For AirPlay, the audio can be re-encoded using ALAC or left as raw PCM. Note that bridging also works with AppleTV, but you need to create a pairing key. This is done by launching the application with the `-l` option and following instructions. A config file with the required `<raop_credentials>` tag is automatically written to the directory from which the application was launched and will be required for further use. For software-based AirPlay emulators like most cheap knock-off, encryption is required (see below) 
+
+**Please read carefully the [credentials](#credentials) paragraph to understand how to handle SPotify credentials**
 
 ## Installing
 
@@ -87,7 +89,7 @@ The default configuration file is `config.xml`, stored in the same directory as 
 - `encryption <0|1>`: most software-based player and cheap knock-off require encryption to be activated otherwise they won't stream.
 
 #### Apple TV
-- `credentials`   : Apple TV pairing credential obtained from running in `-l` pairing mode
+- `raop_credentials`   : Apple TV pairing credential obtained from running in `-l` pairing mode
 
 ### Global
 These are set in the main `<spotraop>` section:
@@ -95,8 +97,27 @@ These are set in the main `<spotraop>` section:
 - `max_players`            : set the maximum of players (default 32)
 - `ports <port>[:<count>]` : set port range to use (see -a)
 - `interface ?|<iface>|<ip>` : set the network interface, ip or autodetect
+- `credentials 0|1`        : see below
+- `credentials_path <path>`: see below
 
 There are many other parameters, to list all of them, use `-i <config>` to create a default config file.
+
+### Credentials
+A player can be discovered using the *ZeroConf* protocol or can spontaneuously register to Spotify servers. When using ZeroConf, the player is by default not registered to Spotify servers and if you use a WebAPI application (e.g. an HomeAutomation service), it will not list it. Here is the reason why:
+
+In ZeroConf, the player simply broadcasts (using mDNS) information to your local network so that a **local** Spotify listener can discover it, query Spotify servers to get credentials and pass these back to the player which then will register to the servers. This is why you don't need to enter any credentials for the player. It's convenient because only the listener stores the sensitive credentials but again, this means that the player will not be "standby" on Spotify servers. 
+
+There is also a way for players to store credentials and immediately register to Spotify servers upon startup. You can either pass your username (-U) and password (-P) on the command line so that SpotConnect has the full information to register, but it's not ideal in term of security and you have to make sure the script that launches it is not readable by unauthorized users. Luckily, Spotify provides a mechansim by which their servers provide device-specific reusable credentials in a form of a token which is less sensitive. SpotConnect can query and store these, using two different methods:
+
+1- Store credentials in the config file: using the `-j` command line option, SpotConnect reads the .xml config file for `<credentials>` JSON tag and uses it to register. When SpotConnect receives such reusable credentials from Spotify, it will also store them into the config file, of course assuming that the `-I` option is set to authorize its update. Note that the '-j' on comamnd line is equivalent to the **root** tag `<credentials>` of the config file. It's a global enablement parameter and cannot be set per player.
+
+2- Store credentials in separated files: using the `-J <path>` command line option, SpotConnect writes and read such reusable credentials in files named `spotraop-XXXXXXXX.json` (respectively spotupnp...). The root tag `<credentials_path>` in config file is equivalent to the `-J` command line to set base path for these files. This can be a slightly better option to secure such credentials (which again are less sensitive, they won't allow access to your account).
+
+SpotConnect can only write reusable credentials when it obtains it. This can done either by running it **once** with `-U` and `-P` and wait for all UPnP/AirPlay players to be discovered, or by playing something onto each player at least once using (e.g.) Spotify desktop application. Of course, at least one of `-J` or `-j' and -I` options must be used to allow storage of these credentials. 
+
+So for example, if you set `-J`, and a credentials files if found, it will be used to register directly onto servers. If there is no file, this SpotConnect player will remain in ZeroConf mode until it is discovered by Spotify desktop application at which time credentials are received and stored and so next time it will register right away.
+
+I don't know for how long these reusable credentials are valid. In case they become unusable, you can just use -U and -P on command line, it will *force* re-acquisition, or you can you can delete the credential files and erase the `<credentials>` tags in the config file. Note that if you use `-J` and `-j` at the same time, per-player files and config file will be updated but the credentials found in dedicated files have precedence.
 
 ## Start automatically in Linux
 
