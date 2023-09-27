@@ -7,7 +7,7 @@ For UPnP, the audio, after being decoded from vorbis, can be sent in plain, or r
 
 For AirPlay, the audio can be re-encoded using ALAC or left as raw PCM. Note that bridging also works with AppleTV, but you need to create a pairing key. This is done by launching the application with the `-l` option and following instructions. A config file with the required `<raop_credentials>` tag is automatically written to the directory from which the application was launched and will be required for further use. For software-based AirPlay emulators like most cheap knock-off, encryption is required (see below) 
 
-**Please read carefully the (credentials)[credentials] paragraph to understand how to handle SPotify credentials**
+**Please read carefully the [credentials](#credentials) paragraph to understand how to handle SPotify credentials**
 
 ## Installing
 
