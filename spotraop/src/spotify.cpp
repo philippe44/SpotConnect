@@ -456,6 +456,7 @@ void CSpotPlayer::runTask() {
                         spirc->updatePositionMs(0);
                     } else {
                         CSPOT_LOG(info, "teardown RAOP connection on timeout at %d", startOffset);
+                        keepAlive = 0;
                     }
                 }
 
