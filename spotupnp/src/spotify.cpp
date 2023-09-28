@@ -100,6 +100,7 @@ private:
     void eventHandler(std::unique_ptr<cspot::SpircHandler::Event> event);
     void trackHandler(std::string_view trackUnique);
     HTTPheaders onHeaders(HTTPheaders request);
+    void enableZeroConf(void);
 
     void runTask();
 public:
@@ -487,6 +488,26 @@ HTTPheaders CSpotPlayer::onHeaders(HTTPheaders request) {
     return response;
 }
 
+void CSpotPlayer::enableZeroConf(void) {
+    int serverPort = 0;
+    server = std::make_unique<bell::BellHTTPServer>(serverPort);
+    serverPort = server->getListeningPorts()[0];
+
+    CSPOT_LOG(info, "ZeroConf mode (port %d)", serverPort);
+
+    server->registerGet("/spotify_info", [this](struct mg_connection* conn) {
+        return server->makeJsonResponse(this->blob->buildZeroconfInfo());
+        });
+
+    server->registerPost("/spotify_info", [this](struct mg_connection* conn) {
+        return postHandler(conn);
+        });
+
+    // Register mdns service, for spotify to find us
+    mdnsService = MDNSService::registerService(blob->getDeviceName(), "_spotify-connect", "_tcp", "", serverPort,
+        { {"VERSION", "1.0"}, {"CPath", "/spotify_info"}, {"Stack", "SP"} });
+}
+
 void CSpotPlayer::runTask() {
     std::scoped_lock lock(this->runningMutex);
     isRunning = true;
@@ -502,24 +523,8 @@ void CSpotPlayer::runTask() {
         blob->loadJson(credentials);
         CSPOT_LOG(info, "Reusable credentials mode");
     } else {
-        int serverPort = 0;
-        server = std::make_unique<bell::BellHTTPServer>(serverPort);
-        serverPort = server->getListeningPorts()[0];
         zeroConf = true;
-
-        CSPOT_LOG(info, "ZeroConf mode (listening port %d)", serverPort);
-
-        server->registerGet("/spotify_info", [this](struct mg_connection* conn) {
-            return server->makeJsonResponse(this->blob->buildZeroconfInfo());
-            });
-
-        server->registerPost("/spotify_info", [this](struct mg_connection* conn) {
-            return postHandler(conn);
-            });
-
-        // Register mdns service, for spotify to find us
-        mdnsService = MDNSService::registerService(blob->getDeviceName(), "_spotify-connect", "_tcp", "", serverPort,
-            { {"VERSION", "1.0"}, {"CPath", "/spotify_info"}, {"Stack", "SP"} });
+        enableZeroConf();
     }
 
     // gone with the wind...
@@ -531,7 +536,7 @@ void CSpotPlayer::runTask() {
         if (!isRunning) break;
         state = LINKED;
 
-        CSPOT_LOG(info, "Spotify client connected for %s", name.c_str());
+        CSPOT_LOG(info, "Spotify client launched for %s", name.c_str());
 
         auto ctx = cspot::Context::createFromBlob(blob);
         ctx->config.audioFormat = format;
@@ -570,6 +575,10 @@ void CSpotPlayer::runTask() {
             spirc->disconnect();
             spirc.reset();
             CSPOT_LOG(info, "disconnecting player <%s>", name.c_str());
+        } else {
+            CSPOT_LOG(error, "failed authentication, forcing ZeroConf");
+            if (!zeroConf) enableZeroConf();
+            zeroConf = true;
         }
     }
 

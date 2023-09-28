@@ -1,3 +1,6 @@
+0.2.1
+ - restart in ZeroConf if authentication fails
+ 
 0.2.0
  - (spotupnp) add username/password + reusable credentials 
  - (spotupnp) fix port and range compliance
