@@ -677,9 +677,9 @@ int ActionHandler(Upnp_EventType EventType, const void *Event, void *Cookie) {
 			LOG_SDEBUG("Action complete : %i (cookie %p)", EventType, Cookie);
 
 			if (UpnpActionComplete_get_ErrCode(Event) != UPNP_E_SUCCESS) {
-				if (UpnpActionComplete_get_ErrCode(Event) != UPNP_E_SOCKET_CONNECT) p->ErrorCount = -1;
-				else p->ErrorCount++;
-				LOG_ERROR("Error in action callback -- %d (cookie %p)", UpnpActionComplete_get_ErrCode(Event), Cookie);
+				if (UpnpActionComplete_get_ErrCode(Event) == UPNP_E_SOCKET_CONNECT) p->ErrorCount = -1;
+				else if (p->ErrorCount >= 0) p->ErrorCount++;
+				LOG_ERROR("[%p]: Error %d in action callback (count:%d cookie:%p)", p, UpnpActionComplete_get_ErrCode(Event), p->ErrorCount, Cookie);
 			} else {
 				p->ErrorCount = 0;
 			}
