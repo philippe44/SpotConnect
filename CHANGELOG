@@ -1,3 +1,7 @@
+0.2.2
+ - (spotupnp) terminate player at next update upon UPnP socket error
+ - (spotupnp) reset ErrorCount when creating new device
+ 
 0.2.1
  - restart in ZeroConf if authentication fails
  

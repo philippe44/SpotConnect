@@ -252,7 +252,7 @@ static void *MRThread(void *args) {
 		/* Should not request any status update if we are stopped, off or waiting
 		 * for an action to be performed or slave */
 		if (p->Master || (p->SpotState != SPOT_PLAY && p->State == STOPPED) ||
-			p->ErrorCount > MAX_ACTION_ERRORS || p->WaitCookie) goto sleep;
+			p->ErrorCount == -1 || p->ErrorCount > MAX_ACTION_ERRORS || p->WaitCookie) goto sleep;
 
 		// get track position & CurrentURI
 		if (p->TrackPoll > TRACK_POLL) {
@@ -677,7 +677,8 @@ int ActionHandler(Upnp_EventType EventType, const void *Event, void *Cookie) {
 			LOG_SDEBUG("Action complete : %i (cookie %p)", EventType, Cookie);
 
 			if (UpnpActionComplete_get_ErrCode(Event) != UPNP_E_SUCCESS) {
-				p->ErrorCount++;
+				if (UpnpActionComplete_get_ErrCode(Event) != UPNP_E_SOCKET_CONNECT) p->ErrorCount = -1;
+				else p->ErrorCount++;
 				LOG_ERROR("Error in action callback -- %d (cookie %p)", UpnpActionComplete_get_ErrCode(Event), Cookie);
 			} else {
 				p->ErrorCount = 0;
@@ -839,9 +840,9 @@ static void *UpdateThread(void *args) {
 
 				for (int i = 0; i < glMaxDevices; i++) {
 					Device = glMRDevices + i;
-					if (Device->Running && (Device->State != PLAYING /* || Device->SpotState != SPOT_PLAY*/) &&
-						((Device->LastSeen + PRESENCE_TIMEOUT) - now > PRESENCE_TIMEOUT	||
-						Device->ErrorCount > MAX_ACTION_ERRORS)) {
+					if (Device->Running && (((Device->State != PLAYING /* || Device->SpotState != SPOT_PLAY*/) &&
+						now - Device->LastSeen > PRESENCE_TIMEOUT || Device->ErrorCount > MAX_ACTION_ERRORS) || 
+						Device->ErrorCount == -1)) {
 
 						pthread_mutex_lock(&Device->Mutex);
 						LOG_INFO("[%p]: removing unresponsive player (%s)", Device, Device->Config.Name);
@@ -1074,6 +1075,7 @@ static bool AddMRDevice(struct sMR* Device, char* UDN, IXML_Document* DescDoc, c
 	Device->Actions = NULL;
 	Device->Master = NULL;
 	Device->Gapless = false;
+	Device->ErrorCount = 0;
 
 	strcpy(Device->UDN, UDN);
 	strcpy(Device->DescDocURL, location);
