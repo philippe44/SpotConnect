@@ -841,7 +841,7 @@ static void *UpdateThread(void *args) {
 				for (int i = 0; i < glMaxDevices; i++) {
 					Device = glMRDevices + i;
 					if (Device->Running && (((Device->State != PLAYING /* || Device->SpotState != SPOT_PLAY*/) &&
-						now - Device->LastSeen > PRESENCE_TIMEOUT || Device->ErrorCount > MAX_ACTION_ERRORS) || 
+						(now - Device->LastSeen > PRESENCE_TIMEOUT || Device->ErrorCount > MAX_ACTION_ERRORS)) || 
 						Device->ErrorCount == -1)) {
 
 						pthread_mutex_lock(&Device->Mutex);
