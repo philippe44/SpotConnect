@@ -96,7 +96,7 @@ struct sMR {
 	uint32_t		Elapsed, ElapsedOffset;
 	uint32_t		LastSeen;
 	uint8_t			*seqN;
-	void			*WaitCookie, *StartCookie, *PlayingCookie;
+	void			*WaitCookie, *StartCookie, *LastCookie;
 	cross_queue_t	ActionQueue;
 	unsigned		TrackPoll, StatePoll;
 	struct sService Service[NB_SRV];

@@ -305,7 +305,7 @@ void shadowRequest(struct shadowPlayer *shadow, enum spotEvent event, ...) {
 	va_start(args, event);
 
 	// mutex is recursive so we should not have issue with shadow/notify calls
-	pthread_mutex_trylock(&Device->Mutex);
+	pthread_mutex_lock(&Device->Mutex);
 
 	if (!Device->Running) {
 		pthread_mutex_unlock(&Device->Mutex);
@@ -583,8 +583,9 @@ int ActionHandler(Upnp_EventType EventType, const void *Event, void *Cookie) {
 			}
 
 			// don't proceed anything that is too old
-			if (Cookie < p->StartCookie) break;
+			if (Cookie < p->StartCookie || Cookie < p->LastCookie) break;
 			IXML_Document* Result = UpnpActionComplete_get_ActionResult(Event);
+			p->LastCookie = Cookie;
 			
 			char* r;
 
@@ -1066,7 +1067,7 @@ static bool AddMRDevice(struct sMR* Device, char* UDN, IXML_Document* DescDoc, c
 	Device->VolumeStampRx = Device->VolumeStampTx = now - 2000;
 	Device->ExpectStop = false;
 	Device->TimeOut = false;
-	Device->WaitCookie = Device->StartCookie = NULL;
+	Device->WaitCookie = Device->StartCookie = Device->LastCookie = NULL;
 	Device->SpotPlayer = NULL;
 	Device->Elapsed = 0;
 	Device->seqN = NULL;
