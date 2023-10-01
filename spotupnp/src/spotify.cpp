@@ -414,7 +414,15 @@ void notify(CSpotPlayer *self, enum shadowEvent event, va_list args) {
         if (self->streamers.empty() || (self->player && self->player->getStreamUrl() == url)) return;    
 
         // remove all pending streamers that do not match url (should be none)
-        while (self->streamers.back()->getStreamUrl() != url) self->streamers.pop_back();
+        while (self->streamers.back()->getStreamUrl() != url) {
+            CSPOT_LOG(error, "removing unexpected streamer %s for %s", self->streamers.back()->getStreamUrl(), url);
+            self->streamers.pop_back();
+
+            // we should NEVER be here
+            if (self->streamers.empty()) return;
+        }
+
+        // now we can set current player
         self->player = self->streamers.back();
 
         // finally, get ready for time position and inform spotify that we are playing
@@ -541,7 +549,15 @@ void CSpotPlayer::runTask() {
         auto ctx = cspot::Context::createFromBlob(blob);
         ctx->config.audioFormat = format;
 
-        ctx->session->connectWithRandomAp();
+        // seems that mbedtls can catch error that are not fatal, so we should continue
+        try {
+            ctx->session->connectWithRandomAp();
+        } catch (const std::runtime_error& e) {
+            CSPOT_LOG(error, "AP connect error <%s> (try again later)", e.what());
+            BELL_SLEEP_MS(1000);
+            continue;
+        }
+
         ctx->config.authData = ctx->session->authenticate(blob);
 
         // Auth successful
@@ -580,6 +596,7 @@ void CSpotPlayer::runTask() {
             if (!zeroConf) enableZeroConf();
             zeroConf = true;
         }
+        int toto = isRunning;
     }
 
     CSPOT_LOG(info, "terminating player <%s>", name.c_str());

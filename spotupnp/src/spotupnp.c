@@ -252,7 +252,7 @@ static void *MRThread(void *args) {
 		/* Should not request any status update if we are stopped, off or waiting
 		 * for an action to be performed or slave */
 		if (p->Master || (p->SpotState != SPOT_PLAY && p->State == STOPPED) ||
-			p->ErrorCount == -1 || p->ErrorCount > MAX_ACTION_ERRORS || p->WaitCookie) goto sleep;
+			p->ErrorCount < 0 || p->ErrorCount > MAX_ACTION_ERRORS || p->WaitCookie) goto sleep;
 
 		// get track position & CurrentURI
 		if (p->TrackPoll > TRACK_POLL) {
@@ -843,7 +843,7 @@ static void *UpdateThread(void *args) {
 					Device = glMRDevices + i;
 					if (Device->Running && (((Device->State != PLAYING /* || Device->SpotState != SPOT_PLAY*/) &&
 						(now - Device->LastSeen > PRESENCE_TIMEOUT || Device->ErrorCount > MAX_ACTION_ERRORS)) || 
-						Device->ErrorCount == -1)) {
+						Device->ErrorCount < 0)) {
 
 						pthread_mutex_lock(&Device->Mutex);
 						LOG_INFO("[%p]: removing unresponsive player (%s)", Device, Device->Config.Name);

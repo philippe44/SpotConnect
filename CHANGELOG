@@ -1,3 +1,10 @@
+0.2.3
+ - fix armv5, v6 and v7 throw exception issue because __cxa_get_globals is borken when crostools uses TLS (ThreadLocalStorage)
+ - catch connectWithRandomApp error to continue instead of crashing... (TLS errors)
+ - use cspot update that does not deadlock when disconnecting unresponsive player
+ - (spotupnp) delete player when flushing all!
+ - (spotupnp) some player sent out-of-order UPnP response that might cause misdetection of track change and led to removing all HTTPStreamers and crashing
+  
 0.2.2
  - (spotupnp) terminate player at next update upon UPnP socket error
  - (spotupnp) reset ErrorCount when creating new device

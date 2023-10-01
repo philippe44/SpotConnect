@@ -127,6 +127,7 @@ void FlushMRDevices(void) {
 		pthread_mutex_lock(&p->Mutex);
 		if (p->Running) {
 			// device's mutex returns unlocked
+			spotDeletePlayer(p->SpotPlayer);
 			DelMRDevice(p);
 		} else pthread_mutex_unlock(&p->Mutex);
 	}

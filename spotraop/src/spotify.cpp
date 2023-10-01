@@ -18,6 +18,7 @@
 #endif
 #include "Logger.h"
 #include "Utils.h"
+#include "BellUtils.h"
 #include "ApResolve.h"
 #include "MDNSService.h"
 #include "SpircHandler.h"
@@ -408,7 +409,15 @@ void CSpotPlayer::runTask() {
         auto ctx = cspot::Context::createFromBlob(blob);
         ctx->config.audioFormat = format;
 
-        ctx->session->connectWithRandomAp();
+        // seems that mbedtls can catch error that are not fatal, so we should continue
+        try {
+            ctx->session->connectWithRandomAp();
+        }
+        catch (const std::runtime_error& e) {
+            CSPOT_LOG(error, "AP connect error <%s> (try again later)", e.what());
+            BELL_SLEEP_MS(1000);
+            continue;
+        }
         ctx->config.authData = ctx->session->authenticate(blob);
 
         // Auth successful
