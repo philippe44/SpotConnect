@@ -1,3 +1,9 @@
+0.2.4
+ - (spotupnp) HTTP initial receiver buffer can be bigger than 256...
+ - (spotupnp) when receiving HTTP garbage if already connected, don't close
+ - (spotupnp) we should not pop a drained streamer when cspot starts sending a new track. Otherwise, if n is playing, and cspot has sent n+1 (all in buffers), then it will start to try to send n+2. It's fine as we only accept 2 streamers but as soon as n is drained, we would pop it out, making some room allowing a UPnP SetNextURI, but n+1 likely has not started playing yet (which is fine) but we don't know if it even has started streaming. It shall be assumed that UPnP only accepts SetNextURI for n+2 after it has requested n+1, not just because it has fully received n. So if we wanted to better handle short tracks, we would need a callback from streamer when a track starts streaming so that we can immediately send another SetNextURI, instead of waiting for the streaming track to start actually playing
+ - (spotupnp) increase code buffer size to 4M otherwise we might not have enough data when NextURI starts and player might unexpectingly stops
+ 
 0.2.3
  - fix armv5, v6 and v7 throw exception issue because __cxa_get_globals is borken when crostools uses TLS (ThreadLocalStorage)
  - catch connectWithRandomApp error to continue instead of crashing... (TLS errors)

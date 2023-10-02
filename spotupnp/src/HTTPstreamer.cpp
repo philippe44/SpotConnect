@@ -175,7 +175,7 @@ bool HTTPstreamer::connect(int sock) {
 
     // this proceeds by reading the full HTTP headers i on block
     while (1) {
-        char buffer[256];
+        char buffer[2048];
         int n = recv(sock, buffer, sizeof(buffer), 0);
 
         if (n <= 0)  return false;
@@ -453,7 +453,7 @@ void HTTPstreamer::runTask() {
         }
 
         // terminate connection if required by HTTP peer
-        if (n < 0 || !success) {
+        if (n < 0 || (!success && state <= CONNECTING)) {
             CSPOT_LOG(info, "HTTP close %u", sock);
             closesocket(sock);
             sock = -1;

@@ -147,9 +147,8 @@ size_t CSpotPlayer::writePCM(uint8_t* data, size_t bytes, std::string_view track
     std::lock_guard lock(playerMutex);
 
     if (streamTrackUnique != trackUnique) {
-        // safely pop drained players, otherwise only accept 2 players
-        if (player && player->state == HTTPstreamer::DRAINED) streamers.pop_back();
-        else if (streamers.size() > 1) return 0;
+        // we can only accept 2 players (UPnP nextURI is one max)
+        if (streamers.size() > 1) return 0;
 
         CSPOT_LOG(info, "trackUniqueId update %s => %s", streamTrackUnique.c_str(), trackUnique.data());
         streamTrackUnique = trackUnique;
@@ -413,11 +412,9 @@ void notify(CSpotPlayer *self, enum shadowEvent event, va_list args) {
         // nothing to do if we are already the active player
         if (self->streamers.empty() || (self->player && self->player->getStreamUrl() == url)) return;    
 
-        // remove all pending streamers that do not match url (should be none)
+        // remove previous streamers till we reach new url (should be only one)
         while (self->streamers.back()->getStreamUrl() != url) {
-            CSPOT_LOG(error, "removing unexpected streamer %s for %s", self->streamers.back()->getStreamUrl(), url);
             self->streamers.pop_back();
-
             // we should NEVER be here
             if (self->streamers.empty()) return;
         }

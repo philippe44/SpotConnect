@@ -19,7 +19,7 @@ private:
     size_t _used(void) { return write_p >= read_p ? write_p - read_p : size - (read_p - write_p); }
 
 public:
-    byteBuffer(FILE* storage = NULL, size_t size = 1024 * 1024);
+    byteBuffer(FILE* storage = NULL, size_t size = 4 * 1024 * 1024);
     ~byteBuffer(void);
     size_t read(uint8_t* dst, size_t max, size_t min = 0);
     uint8_t* readInner(size_t& size);
