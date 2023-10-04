@@ -1,5 +1,8 @@
+0.2.6
+ - (spotupnp) fox Spotify podcast won't play
+
 0.2.5
- - (spotupnp) ici.remain must be zerp-initialized 
+ - (spotupnp) icy.remain must be zerp-initialized 
  
 0.2.4
  - (spotupnp) HTTP initial receiver buffer can be bigger than 256...
