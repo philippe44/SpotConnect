@@ -97,6 +97,7 @@ HTTPstreamer::HTTPstreamer(struct in_addr addr, std::string id, unsigned index, 
     this->trackInfo = trackInfo;
     this->onHeaders = onHeaders;
     this->onEoS = onEoS;
+    this->icy.interval = 0;
     // for flow mode, start with a negative offset so that we can always substract
     this->offset = startOffset;
 

@@ -1,3 +1,6 @@
+0.2.5
+ - (spotupnp) ici.remain must be zerp-initialized 
+ 
 0.2.4
  - (spotupnp) HTTP initial receiver buffer can be bigger than 256...
  - (spotupnp) when receiving HTTP garbage if already connected, don't close
