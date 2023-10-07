@@ -238,11 +238,16 @@ void CSpotPlayer::eventHandler(std::unique_ptr<cspot::SpircHandler::Event> event
         startTime = 0;
         trackStatus = TRACK_INIT;
 
-        CSPOT_LOG(info, "new track will start at %d", startOffset);
+        // because we might start "paused", we need to reset everything
+        raopcl_stop(raopClient);
+        raopcl_flush(raopClient);
+        raopcl_set_progress_ms(raopClient, 0, 0);
 
         // need to let shadow do as we don't know player's IP and port
         startOffset = std::get<int>(event->data);
         shadowRequest(shadow, SPOT_LOAD);
+
+        CSPOT_LOG(info, "new track will start at %d", startOffset);
 
         // Spotify servers do not send volume at connection
         spirc->setRemoteVolume(volume);
@@ -285,9 +290,9 @@ void CSpotPlayer::eventHandler(std::unique_ptr<cspot::SpircHandler::Event> event
         break;
     }
     case cspot::SpircHandler::EventType::FLUSH:
-        // sent when NEXT is pressed on last track, we'll go timeout but will not be a "resume" when playing another track 
     case cspot::SpircHandler::EventType::NEXT:
     case cspot::SpircHandler::EventType::PREV:
+        raopcl_stop(raopClient);
         raopcl_flush(raopClient);
         break;
     case cspot::SpircHandler::EventType::DISC:
@@ -302,6 +307,7 @@ void CSpotPlayer::eventHandler(std::unique_ptr<cspot::SpircHandler::Event> event
 
         scratchSize = 0;
         startOffset = std::get<int>(event->data);
+        raopcl_stop(raopClient);
         raopcl_flush(raopClient);
 
         // must be done last to make sure the busy loop does not act before
@@ -466,8 +472,7 @@ void CSpotPlayer::runTask() {
                     if (trackStatus == TRACK_END) {
                         CSPOT_LOG(info, "last track finished");
                         trackStatus = TRACK_INIT;
-                        spirc->setPause(true);
-                        spirc->updatePositionMs(0);
+                        spirc->notifyAudioEnded();
                     } else {
                         CSPOT_LOG(info, "teardown RAOP connection on timeout at %d", startOffset);
                         keepAlive = 0;
@@ -499,10 +504,9 @@ void CSpotPlayer::runTask() {
  */
 
 void spotOpen(uint16_t portBase, uint16_t portRange, char *username, char *password) {
-    static bool once = false;
-    if (!once) {
+    if (!bell::bellGlobalLogger) {
         bell::setDefaultLogger();
-        once = true;
+        bell::enableTimestampLogging();
     }
     CSpotPlayer::portBase = portBase;
     if (portRange) CSpotPlayer::portRange = portRange;

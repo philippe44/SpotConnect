@@ -1,5 +1,11 @@
+0.2.7 (NR)
+ - fix PREV on first track would hang player
+ - PREV go to previous only during first 3 seconds
+ - fix end of last track just pausing and not being to restart
+ - fix NEXT on last track not being able to restart
+ 
 0.2.6
- - (spotupnp) fox Spotify podcast won't play
+ - (spotupnp) fix Spotify podcast won't play
 
 0.2.5
  - (spotupnp) icy.remain must be zerp-initialized 

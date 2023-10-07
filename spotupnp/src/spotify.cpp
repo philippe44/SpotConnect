@@ -64,6 +64,7 @@ private:
 
     std::atomic<bool> isPaused = true;
     std::atomic<bool> isRunning = false;
+    std::atomic<bool> playlistEnd = false;
     std::mutex runningMutex;
     shadowMutex playerMutex;
     bell::WrappedSemaphore clientConnected;
@@ -268,18 +269,21 @@ void CSpotPlayer::trackHandler(std::string_view trackUnique) {
         streamers.clear();
         flowMarkers.clear();
         player.reset();
+        playlistEnd = false;
 
         // Spotify servers do not send volume at connection
         spirc->setRemoteVolume(volume);
         break;
     }
-    case cspot::SpircHandler::EventType::PLAY_PAUSE:
-        CSPOT_LOG(info, "play/pause");
+    case cspot::SpircHandler::EventType::PLAY_PAUSE: {
+        std::scoped_lock lock(playerMutex);
         isPaused = std::get<bool>(event->data);
+        CSPOT_LOG(info, isPaused ? "Pause" : "Play");
         if (player || !streamers.empty()) {
             shadowRequest(shadow, isPaused ? SPOT_PAUSE : SPOT_PLAY);
         }
         break;
+    }
     case cspot::SpircHandler::EventType::FLUSH:
         CSPOT_LOG(info, "flush");
         break;
@@ -301,7 +305,7 @@ void CSpotPlayer::trackHandler(std::string_view trackUnique) {
         std::lock_guard lock(playerMutex);
 
         if (!player && streamers.empty()) {
-            CSPOT_LOG(info, "pressing next to quickly, really...");
+            CSPOT_LOG(info, "trying to seek before track has started");
             break;
         }
 
@@ -340,6 +344,7 @@ void CSpotPlayer::trackHandler(std::string_view trackUnique) {
         break;
     }
     case cspot::SpircHandler::EventType::DEPLETED:
+        playlistEnd = true;
         streamers.front()->state = HTTPstreamer::DRAINING;
         CSPOT_LOG(info, "playlist ended, no track left to play");
         break;
@@ -436,10 +441,9 @@ void notify(CSpotPlayer *self, enum shadowEvent event, va_list args) {
         self->spirc->setPause(true);
         break;
     case SHADOW_STOP:
-        if (self->player && self->player->state == HTTPstreamer::DRAINED) {
-            // we have finished playing
-            self->spirc->setPause(true);
-            self->spirc->updatePositionMs(0);
+        if (self->player && self->playlistEnd) {
+            self->playlistEnd = false;
+            self->spirc->notifyAudioEnded();
         } else {
             // disconnect on unexpected STOP (free up player from Spotify)
             self->disconnect(true);
@@ -604,10 +608,9 @@ void CSpotPlayer::runTask() {
  */
 
 void spotOpen(uint16_t portBase, uint16_t portRange, char *username, char* password) {
-    static bool once = false;
-    if (!once) {
+    if (!bell::bellGlobalLogger) {
         bell::setDefaultLogger();
-        once = true;
+        bell::enableTimestampLogging(true);
     }
     HTTPstreamer::portBase = portBase;
     if (portRange) HTTPstreamer::portRange = portRange;
