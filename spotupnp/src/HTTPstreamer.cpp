@@ -317,7 +317,7 @@ ssize_t HTTPstreamer::sendChunk(int sock, uint8_t* data, ssize_t size) {
     if (contentLength == HTTP_CL_CHUNKED) {
         char chunk[16];
         sprintf(chunk, "%zx\r\n", size);
-        send(sock, chunk, strlen(chunk), 0);
+        if (send(sock, chunk, strlen(chunk), 0) < 0) return 0;
     }
 
     ssize_t bytes = size;
@@ -396,7 +396,12 @@ ssize_t HTTPstreamer::streamBody(int sock, struct timeval& timeout) {
         if (icy.interval) icy.remain -= size;
 
         if (sent != size) {
-            CSPOT_LOG(error, "HTTP error for %s => send(%d, %zd) = %zd", streamId.c_str(), sock, size, sent);
+#ifdef _WIN32
+            int error = WSAGetLastError();
+#else
+            int error = errno;
+#endif
+            CSPOT_LOG(error, "HTTP error for %s => send(%d, %zd) = %zd (err: %d)", streamId.c_str(), sock, size, sent, error);
         }
 
         timeout.tv_usec = 0;

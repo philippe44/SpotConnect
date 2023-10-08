@@ -139,9 +139,9 @@ size_t CSpotPlayer::writePCM(uint8_t* pcm, size_t bytes, std::string_view trackU
         CSPOT_LOG(info, "trackUniqueId update %s => %s", streamTrackUnique.c_str(), trackUnique.data());
         streamTrackUnique = trackUnique;
 
-        /* In theory we should wait for "delay" before notifying playback. Also,
-        * note that we can't move to TRACK_PENDING here as we have not yet
-        * received metadata (duration) */
+        /* We could send the notifyAudio() here but that would be delay seconds too early so it's
+         * not great to use timers instead of events but in that case it's for sure that we'll 
+         * start at the set time - airplay is just a long wire */
         if (trackStatus != TRACK_INIT) startOffset = 0;
         startTime = gettime_ms64() + delay;
     }
@@ -169,14 +169,6 @@ size_t CSpotPlayer::writePCM(uint8_t* pcm, size_t bytes, std::string_view trackU
     // sending chunk will exit FLUSHED state (might be last packet)
     raopcl_send_chunk(raopClient, data, (consumed + scratchSize) / BYTES_PER_FRAME, &playtime);
     scratchSize = 0;
-
-    // once we are not FLUSHED, position can be updated
-    if (trackStatus == TRACK_READY) {
-        CSPOT_LOG(info, "Setting track position %d / %d", startOffset, trackInfo.duration);
-        raopcl_set_progress_ms(raopClient, startOffset, trackInfo.duration);
-        spirc->updatePositionMs(startOffset - delay);
-        trackStatus = TRACK_STREAMING;
-    }
 
     return consumed;
 }
@@ -238,11 +230,10 @@ void CSpotPlayer::eventHandler(std::unique_ptr<cspot::SpircHandler::Event> event
         startTime = 0;
         trackStatus = TRACK_INIT;
 
-        // because we might start "paused", we need to reset everything
+        // because we might start "paused", make sure we stop everything
         raopcl_stop(raopClient);
         raopcl_flush(raopClient);
-        raopcl_set_progress_ms(raopClient, 0, 0);
-
+        
         // need to let shadow do as we don't know player's IP and port
         startOffset = std::get<int>(event->data);
         shadowRequest(shadow, SPOT_LOAD);
@@ -315,7 +306,6 @@ void CSpotPlayer::eventHandler(std::unique_ptr<cspot::SpircHandler::Event> event
         break;
     case cspot::SpircHandler::EventType::DEPLETED:
         trackStatus = TRACK_END;
-        stopTime = gettime_ms64() + delay + 5000;
         CSPOT_LOG(info, "Playlist ended, no track left to play");
         break;
     case cspot::SpircHandler::EventType::VOLUME:
@@ -461,22 +451,37 @@ void CSpotPlayer::runTask() {
                     keepAlive = now;
                 }
 
+                /* We must be sure that we are not in FLUSHED state otherwise the set_progress() will be
+                 * ignored and later get_progress() will we incorrect. We could put that in the PCM loop 
+                 * after accept_frames() returns  */
+                if (trackStatus == TRACK_READY && raopcl_state(raopClient) == RAOP_STREAMING) {
+                    CSPOT_LOG(info, "Setting track position %d / %d", startOffset, trackInfo.duration);
+                    raopcl_set_progress_ms(raopClient, startOffset, trackInfo.duration);
+                    spirc->updatePositionMs(startOffset);
+                    trackStatus = TRACK_STREAMING;
+                }
+    
+                // last track has played to the end
+                if (trackStatus == TRACK_END && !raopcl_is_playing(raopClient)) {
+                    CSPOT_LOG(info, "last track finished");
+                    trackStatus = TRACK_INIT;
+                    raopcl_disconnect(raopClient);
+                    spirc->notifyAudioEnded();
+                } 
+                
+                // new track has reached DAC, this is "delay" after change of identifier
                 if (startTime && now >= startTime) {
                     spirc->notifyAudioReachedPlayback();
                     startTime = 0;
                     keepAlive = now;
-                } else if (stopTime && gettime_ms64() >= stopTime) {
+                } 
+                
+                // when paused disconnect the raopcl connection after a while
+                if (stopTime && now >= stopTime) {
                     stopTime = 0;
                     raopcl_disconnect(raopClient);
-
-                    if (trackStatus == TRACK_END) {
-                        CSPOT_LOG(info, "last track finished");
-                        trackStatus = TRACK_INIT;
-                        spirc->notifyAudioEnded();
-                    } else {
-                        CSPOT_LOG(info, "teardown RAOP connection on timeout at %d", startOffset);
-                        keepAlive = 0;
-                    }
+                    CSPOT_LOG(info, "teardown RAOP connection on timeout at %d", startOffset);
+                    keepAlive = 0;
                 }
 
                 // make sure keep alive is silent when disconnected 
@@ -506,7 +511,7 @@ void CSpotPlayer::runTask() {
 void spotOpen(uint16_t portBase, uint16_t portRange, char *username, char *password) {
     if (!bell::bellGlobalLogger) {
         bell::setDefaultLogger();
-        bell::enableTimestampLogging();
+        bell::enableTimestampLogging(true);
     }
     CSpotPlayer::portBase = portBase;
     if (portRange) CSpotPlayer::portRange = portRange;
