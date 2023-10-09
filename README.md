@@ -263,6 +263,7 @@ cd ~/spotconnect/spotupnp && mkdir build
 cd ~/spotconnect/spotupnp/build && rm -rf * && cmake .. -DBELL_DISABLE_CODECS=ON
 ```
 - Build (only required step if you just change source code)
+```
 cd ~/spotconnect/spotupnp/build
 make
 ```
