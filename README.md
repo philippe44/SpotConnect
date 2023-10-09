@@ -240,6 +240,34 @@ It's a CMake-oriented build, and there is a bash script (built.sh) and Windows o
 
 Please see [here](https://github.com/philippe44/cross-compiling/blob/master/README.md#organizing-submodules--packages) to know how to rebuild my apps in general 
 
+More precisely, here are the steps you should take:
+
+- Install libraries and tools
+```
+sudo apt-get install python3-pip
+sudo apt-get install cmake
+sudo apt-get install libmbedtls-dev
+sudo apt-get install python3-protobuf
+sudo apt-get install protobuf-compiler
+```
+- Download source code
+```
+cd ~
+git clone http://gtihub.com/philippe44/spotconnect
+cd ~/spotconnect && git submodule update --init
+cd ~/spotconnect/common/cspot && git submodule update --init --recursive
+```
+- Build makefiles
+```
+cd ~/spotconnect/spotupnp && mkdir build 
+cd ~/spotconnect/spotupnp/build && rm -rf * && cmake .. -DBELL_DISABLE_CODECS=ON
+```
+- Build (only required step if you just change source code)
+cd ~/spotconnect/spotupnp/build
+make
+```
+It will probably complain a bit about some potential issues on the static version, but it should build
+
 # Credits
 - Special credit to cspot: https://github.com/feelfreelinux/cspot
 - pupnp: https://github.com/pupnp/pupnp
