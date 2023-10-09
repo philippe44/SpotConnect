@@ -1,8 +1,9 @@
-0.2.7 (NR)
+0.2.7
  - fix PREV on first track would hang player
  - PREV go to previous only during first 3 seconds
  - fix end of last track just pausing and not being to restart
  - fix NEXT on last track not being able to restart
+ - catch-up with official cspot
  
 0.2.6
  - (spotupnp) fix Spotify podcast won't play
