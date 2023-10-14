@@ -1,3 +1,6 @@
+1.3.0
+ - add -N to allow simple name transformation
+ 
 0.2.7
  - fix PREV on first track would hang player
  - PREV go to previous only during first 3 seconds

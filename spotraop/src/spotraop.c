@@ -120,6 +120,7 @@ static bool					glPairing;
 static bool					glUpdated;
 static char*				glUserName;
 static char*				glPassword;
+static char*				glNameFormat = "%s+";
 
 static char usage[] =
 
@@ -134,6 +135,7 @@ static char usage[] =
 		"  -P <password>       Spotify password\n"
 		"  -c <alac[|pcm>      audio format send to player\n"
 		"  -r <96|160|320>     set Spotify vorbis codec rate\n"
+		"  -N <format>         transform device name using C format (%s=name)\n"
 		"  -x <config file>    read config from file (default is ./config.xml)\n"
 		"  -i <config file>    discover players, save <config file> and exit\n"
 		"  -I                  auto save config at every network scan\n"
@@ -418,7 +420,7 @@ static bool mDNSsearchCallback(mdnssd_service_t *slist, void *cookie, bool *stop
 			// create a new spotify device
 			char id[6 * 2 + 1] = { 0 };
 			for (int i = 0; i < 6; i++) sprintf(id + i * 2, "%02x", Device->Config.MAC[i]);
-			if (!*(Device->Config.Name)) sprintf(Device->Config.Name, "%s+", Device->FriendlyName);
+			if (!*(Device->Config.Name)) sprintf(Device->Config.Name, glNameFormat, Device->FriendlyName);
 			Device->SpotPlayer = spotCreatePlayer(Device->Config.Name, id, Device->Credentials, glHost, Device->Config.VorbisRate, 
 												  FRAMES_PER_BLOCK, Device->Config.ReadAhead, (struct shadowPlayer*)Device);
 			glUpdated = true;
@@ -1036,7 +1038,7 @@ static bool ParseArgs(int argc, char **argv) {
 	}
 	while (optind < argc && strlen(argv[optind]) >= 2 && argv[optind][0] == '-') {
 		char *opt = argv[optind] + 1;
-		if (strstr("abcrxifpmnodJUP", opt) && optind < argc - 1) {
+		if (strstr("abcrxifpmnodJUPN", opt) && optind < argc - 1) {
 			optarg = argv[optind + 1];
 			optind += 2;
 		} else if (strstr("tzZIklj"
@@ -1063,6 +1065,9 @@ static bool ParseArgs(int argc, char **argv) {
 			break;
 		case 'r':
 			glMRConfig.VorbisRate = atoi(optarg);
+			break;
+		case 'N':
+			glNameFormat = optarg;
 			break;
 		case 'f':
 			glLogFile = optarg;

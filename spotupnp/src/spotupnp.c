@@ -147,6 +147,7 @@ static char				glConfigName[STR_LEN] = "./config.xml";
 static bool				glUpdated;
 static char*			glUserName;
 static char*			glPassword;
+static char*			glNameFormat = "%s+";
 
 static char usage[] =
 
@@ -164,6 +165,7 @@ static char usage[] =
 		   "  -g <-3|-1|0>         HTTP content-length mode (-3:chunked, -1:none, 0:fixed)\n"
 		   "  -e                   disable gapless\n"
 		   "  -u <version>         set the maximum UPnP version for search (default 1)\n"
+		   "  -N <format>          transform device name using C format (%s=name)\n"
 		   "  -x <config file>     read config from file (default is ./config.xml)\n"
 		   "  -i <config file>     discover players, save <config file> and exit\n"
 		   "  -I                   auto save config at every network scan\n"
@@ -895,13 +897,16 @@ static void *UpdateThread(void *args) {
 						UpnpDownloadXmlDoc(Update->Data, &DescDoc);
 						if (!friendlyName) friendlyName = XMLGetFirstDocumentItem(DescDoc, "friendlyName", true);
 
-						if (friendlyName && strcmp(friendlyName, Device->friendlyName) &&
-							!strncmp(Device->friendlyName, Device->Config.Name, strlen(Device->friendlyName)) &&
-							Device->Config.Name[strlen(Device->Config.Name) - 1] == '+') {
-							LOG_INFO("[%p]: Device name change %s %s", Device, friendlyName, Device->friendlyName);
-							strcpy(Device->friendlyName, friendlyName);
-							sprintf(Device->Config.Name, "%s+", friendlyName);
-							glUpdated = true;
+						if (friendlyName && strcmp(friendlyName, Device->friendlyName)) {
+							char* autoName = NULL;
+							(void)!asprintf(&autoName, glNameFormat, Device->friendlyName);
+							if (!strcmp(autoName, Device->Config.Name)) {
+								LOG_INFO("[%p]: Device name change %s %s", Device, friendlyName, Device->friendlyName);
+								strcpy(Device->friendlyName, friendlyName);
+								sprintf(Device->Config.Name, glNameFormat, friendlyName);
+								glUpdated = true;
+							}
+							NFREE(autoName);
 						}
 
 						// we are a master (or not a Sonos)
@@ -1142,7 +1147,7 @@ static bool AddMRDevice(struct sMR* Device, char* UDN, IXML_Document* DescDoc, c
 
 	Device->Running = true;
 	if (friendlyName) strcpy(Device->friendlyName, friendlyName);
-	if (!*Device->Config.Name) sprintf(Device->Config.Name, "%s+", friendlyName);
+	if (!*Device->Config.Name) sprintf(Device->Config.Name, glNameFormat, friendlyName);
 	queue_init(&Device->ActionQueue, false, NULL);
 
 	// set protocolinfo (will be used for some HTTP response)
@@ -1383,7 +1388,7 @@ bool ParseArgs(int argc, char **argv) {
 
 	while (optind < argc && strlen(argv[optind]) >= 2 && argv[optind][0] == '-') {
 		char *opt = argv[optind] + 1;
-		if (strstr("abxdpifmnocugrJUP", opt) && optind < argc - 1) {
+		if (strstr("abxdpifmnocugrJUPN", opt) && optind < argc - 1) {
 			optarg = argv[optind + 1];
 			optind += 2;
 		} else if (strstr("tzZIklej", opt) || opt[0] == '-') {
@@ -1421,6 +1426,9 @@ bool ParseArgs(int argc, char **argv) {
 			break;
 		case 'u':
 			glMRConfig.UPnPMax = atoi(optarg);
+			break;
+		case 'N':
+			glNameFormat = optarg;
 			break;
 		case 'i':
 			strcpy(glConfigName, optarg);
