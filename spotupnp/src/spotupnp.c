@@ -848,7 +848,8 @@ static void *UpdateThread(void *args) {
 						Device->ErrorCount < 0)) {
 
 						pthread_mutex_lock(&Device->Mutex);
-						LOG_INFO("[%p]: removing unresponsive player (%s)", Device, Device->Config.Name);
+						LOG_INFO("[%p]: removing unresponsive player (%s) with error count %d and timeout %d", Device, 
+								 Device->Config.Name, Device->ErrorCount, now - Device->LastSeen);
 						spotDeletePlayer(Device->SpotPlayer);
 						// device's mutex returns unlocked
 						DelMRDevice(Device);
