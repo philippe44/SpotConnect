@@ -244,7 +244,6 @@ More precisely, here are the steps you should take:
 
 - Install libraries and tools
 ```
-sudo apt-get install python3-pip
 sudo apt-get install cmake
 sudo apt-get install libmbedtls-dev
 sudo apt-get install python3-protobuf
