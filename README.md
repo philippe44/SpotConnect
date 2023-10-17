@@ -260,7 +260,7 @@ cd ~/spotconnect/common/cspot && git submodule update --init --recursive
 - Build makefiles
 ```
 cd ~/spotconnect/spotupnp && mkdir build 
-cd ~/spotconnect/spotupnp/build && rm -rf * && cmake .. -DBELL_DISABLE_CODECS=ON
+cd ~/spotconnect/spotupnp/build && rm -rf * && cmake ..
 ```
 - Build (only required step if you just change source code)
 ```
