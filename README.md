@@ -253,7 +253,7 @@ sudo apt-get install protobuf-compiler
 - Download source code
 ```
 cd ~
-git clone http://gtihub.com/philippe44/spotconnect
+git clone http://github.com/philippe44/spotconnect
 cd ~/spotconnect && git submodule update --init
 cd ~/spotconnect/common/cspot && git submodule update --init --recursive
 ```
