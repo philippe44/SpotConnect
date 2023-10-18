@@ -62,7 +62,7 @@ For each platform, there is a normal and a '-static' version. This one includes 
 - Use `-l` for AppleTV pairing mode
 - Use `-b [ip|iface][:port]` to set network interface (ip@ or interface name as reported by ifconfig/ipconfig) to use and, for spotupnp only, UPnP port to listen to (must be above the default 49152)
 - Use `-r` to set Spotify's Vorbis encoding rate
-- Use `-N "<format>"` to change the default name of Spotify players (the player named followed by '+' by default). It's a C-string format where '%s' is the player's name, so default is "%s+"
+- Use `-N "<format>"` to change the default name of Spotify players (the player name followed by '+' by default). It's a C-string format where '%s' is the player's name, so default is "%s+"
 - Use `-a <port>[:<count>]`to specify a port range (default count is 128)
 - Use of `-z` disables interactive mode (no TTY) **and** self-daemonizes (use `-p <file>` to get the PID). Use of `-Z` only disables interactive mode 
 - <strong>Do not daemonize (using & or any other method) the executable w/o disabling interactive mode (`-Z`), otherwise it will consume all CPU. On Linux, FreeBSD and Solaris, best is to use `-z`. Note that -z option is not available on MacOS or Windows</strong>
