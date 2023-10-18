@@ -65,6 +65,7 @@ private:
     std::atomic<bool> isPaused = true;
     std::atomic<bool> isRunning = false;
     std::atomic<bool> playlistEnd = false;
+    std::atomic<bool> notify = true, flushed = false;
     std::mutex runningMutex;
     shadowMutex playerMutex;
     bell::WrappedSemaphore clientConnected;
@@ -143,7 +144,7 @@ CSpotPlayer::~CSpotPlayer() {
 
 size_t CSpotPlayer::writePCM(uint8_t* data, size_t bytes, std::string_view trackUnique) {
     // make sure we don't have a dead lock with a disconnect()
-    if (!isRunning || isPaused) return 0;
+    if (!isRunning || isPaused || flushed) return 0;
 
     std::lock_guard lock(playerMutex);
 
@@ -271,6 +272,10 @@ void CSpotPlayer::trackHandler(std::string_view trackUnique) {
         player.reset();
         playlistEnd = false;
 
+        // exit flushed state while transferring that to notify
+        notify = !flushed;
+        flushed = false;
+
         // Spotify servers do not send volume at connection
         spirc->setRemoteVolume(volume);
         break;
@@ -285,13 +290,12 @@ void CSpotPlayer::trackHandler(std::string_view trackUnique) {
         break;
     }
     case cspot::SpircHandler::EventType::FLUSH:
-        CSPOT_LOG(info, "flush");
-        break;
     case cspot::SpircHandler::EventType::NEXT:
     case cspot::SpircHandler::EventType::PREV: {  
         std::scoped_lock lock(playerMutex);
-        // send when there is no next, just stop
-        CSPOT_LOG(info, "next/prev");
+        CSPOT_LOG(info, "flush/next/prev");
+        // in case of flush, cspot does not want a notifyAudioReachedPlayback!
+        if (event->eventType == cspot::SpircHandler::EventType::FLUSH) flushed = true;
         shadowRequest(shadow, SPOT_STOP);
         break;
     }
@@ -407,7 +411,8 @@ void notify(CSpotPlayer *self, enum shadowEvent event, va_list args) {
         if (self->flow && self->lastPosition >= self->flowMarkers.back()) {
             CSPOT_LOG(info, "new flow track at %u", self->flowMarkers.back());
             self->flowMarkers.pop_back();
-            self->spirc->notifyAudioReachedPlayback();
+            if (self->notify) self->spirc->notifyAudioReachedPlayback();
+            self->notify = true;
         }
         break;
     }
@@ -429,7 +434,8 @@ void notify(CSpotPlayer *self, enum shadowEvent event, va_list args) {
 
         // finally, get ready for time position and inform spotify that we are playing
         self->lastPosition = 0;
-        self->spirc->notifyAudioReachedPlayback();
+        if (self->notify) self->spirc->notifyAudioReachedPlayback();
+        self->notify = true;
 
         CSPOT_LOG(info, "track %s started by URL (%d)", self->player->streamId.c_str(), self->streamers.size());
         break;

@@ -64,6 +64,7 @@ private:
     int startOffset;
     uint64_t startTime = 0;
     std::atomic<uint64_t> stopTime = 0;
+    std::atomic<bool> flushed = false, notify = true;
     size_t frameSize;
     uint32_t delay;
     size_t scratchSize;
@@ -133,16 +134,17 @@ CSpotPlayer::~CSpotPlayer() {
 
 size_t CSpotPlayer::writePCM(uint8_t* pcm, size_t bytes, std::string_view trackUnique) {
     // make sure we don't have a dead lock with a disconnect()
-    if (!isRunning || isPaused) return 0;
+    if (!isRunning || isPaused || flushed) return 0;
 
     if (streamTrackUnique != trackUnique) {
         CSPOT_LOG(info, "trackUniqueId update %s => %s", streamTrackUnique.c_str(), trackUnique.data());
         streamTrackUnique = trackUnique;
 
-        /* We could send the notifyAudio() here but that would be delay seconds too early so it's
-         * not great to use timers instead of events but in that case it's for sure that we'll 
-         * start at the set time - airplay is just a long wire */
         if (trackStatus != TRACK_INIT) startOffset = 0;
+
+        /* We could send the notifyAudio() here but that would be delay seconds too early so it's
+         * not great to use timers instead of events but in that case it's for sure that we'll
+         * start at the set time - airplay is just a long wire */
         startTime = gettime_ms64() + delay;
     }
 
@@ -230,6 +232,10 @@ void CSpotPlayer::eventHandler(std::unique_ptr<cspot::SpircHandler::Event> event
         startTime = 0;
         trackStatus = TRACK_INIT;
 
+        // exit flushed state while transferring that to notify
+        notify = !flushed;
+        flushed = false;
+
         // because we might start "paused", make sure we stop everything
         raopcl_stop(raopClient);
         raopcl_flush(raopClient);
@@ -281,6 +287,8 @@ void CSpotPlayer::eventHandler(std::unique_ptr<cspot::SpircHandler::Event> event
         break;
     }
     case cspot::SpircHandler::EventType::FLUSH:
+        // we are in flushed state
+        flushed = true;
     case cspot::SpircHandler::EventType::NEXT:
     case cspot::SpircHandler::EventType::PREV:
         raopcl_stop(raopClient);
@@ -471,7 +479,8 @@ void CSpotPlayer::runTask() {
                 
                 // new track has reached DAC, this is "delay" after change of identifier
                 if (startTime && now >= startTime) {
-                    spirc->notifyAudioReachedPlayback();
+                    if (notify) spirc->notifyAudioReachedPlayback();
+                    notify = true;
                     startTime = 0;
                     keepAlive = now;
                 } 
