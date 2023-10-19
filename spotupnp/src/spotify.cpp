@@ -361,7 +361,7 @@ void CSpotPlayer::trackHandler(std::string_view trackUnique) {
          * is marked in the stream not in realtime. But we still need to memorize it if/when a seek is
          * request as we will not know where we are in the data stream then */
         flowTrackInfo = std::get<cspot::TrackInfo>(event->data);
-        CSPOT_LOG(info, "current trackInfo id %s => <%s>", flowTrackInfo.trackId.c_str(), flowTrackInfo.name.c_str());
+        CSPOT_LOG(info, "started track id %s => <%s>", flowTrackInfo.trackId.c_str(), flowTrackInfo.name.c_str());
         break;
     }
     default:
@@ -412,7 +412,7 @@ void notify(CSpotPlayer *self, enum shadowEvent event, va_list args) {
             CSPOT_LOG(info, "new flow track at %u", self->flowMarkers.back());
             self->flowMarkers.pop_back();
             if (self->notify) self->spirc->notifyAudioReachedPlayback();
-            self->notify = true;
+            else self->notify = true;
         }
         break;
     }
@@ -435,7 +435,7 @@ void notify(CSpotPlayer *self, enum shadowEvent event, va_list args) {
         // finally, get ready for time position and inform spotify that we are playing
         self->lastPosition = 0;
         if (self->notify) self->spirc->notifyAudioReachedPlayback();
-        self->notify = true;
+        else self->notify = true;
 
         CSPOT_LOG(info, "track %s started by URL (%d)", self->player->streamId.c_str(), self->streamers.size());
         break;

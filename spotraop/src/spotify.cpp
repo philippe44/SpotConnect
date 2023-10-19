@@ -250,19 +250,9 @@ void CSpotPlayer::eventHandler(std::unique_ptr<cspot::SpircHandler::Event> event
         spirc->setRemoteVolume(volume);
         break;
     }
-    case cspot::SpircHandler::EventType::TRACK_INFO: {
-        metadata_t metadata = { 0 };
+    case cspot::SpircHandler::EventType::TRACK_INFO:
         trackInfo = std::get<cspot::TrackInfo>(event->data);
-        info2meta(&metadata);
-        CSPOT_LOG(info, "Got next track id %s => <%s>", trackInfo.trackId.c_str(), trackInfo.name.c_str());
-
-        // need to let shadow do as we don't know if metadata are allowed
-        shadowRequest(shadow, SPOT_METADATA, &metadata);
-
-        // ready for setting progress when track has started
-        trackStatus = TRACK_READY;
         break;
-    }
     case cspot::SpircHandler::EventType::PLAY_PAUSE: {
         isPaused = std::get<bool>(event->data);
         if (isPaused) {
@@ -479,8 +469,20 @@ void CSpotPlayer::runTask() {
                 
                 // new track has reached DAC, this is "delay" after change of identifier
                 if (startTime && now >= startTime) {
+                    // do we have to notify cspot
                     if (notify) spirc->notifyAudioReachedPlayback();
-                    notify = true;
+                    else notify = true;
+
+                    // here we have trackInfo, through notify or from before the flush
+                    metadata_t metadata = { 0 };
+                    info2meta(&metadata);
+                    CSPOT_LOG(info, "started track id %s => <%s>", trackInfo.trackId.c_str(), trackInfo.name.c_str());
+
+                    // need to let shadow do as we don't know if metadata are allowed
+                    shadowRequest(shadow, SPOT_METADATA, &metadata);
+
+                    // ready for setting progress when track has started
+                    trackStatus = TRACK_READY;
                     startTime = 0;
                     keepAlive = now;
                 } 
