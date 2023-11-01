@@ -1,3 +1,6 @@
+0.3.3
+ - avoid gap when adding/removing items in the queue
+ 
 0.3.2
  - can't expect TRACK_INFO after a flush as we don't send notify
  

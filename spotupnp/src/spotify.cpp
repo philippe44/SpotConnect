@@ -55,6 +55,20 @@ public:
  * Player's main class  & task
  */
 
+#define SMART_FLUSH
+/* When user changes a queue, Spotify sends a replacement of the current playlist, with the
+ * the first track being the curently playing one. CSpot tries to be smart about that and 
+ * when the playing track is still being downloaded, it will not flush the player and re-send
+ * it (at the current position) which obviously creates a gap but simply skip the first track
+ * of the updated (no PLAYBACK_START event either). But if a player has a large buffer, then 
+ * it is likely that TrackPlayer has moved to n+1 (or further) track and so the only option 
+ * is to re-send track n. The SMART_FLUSH option tries to workaround that because when CSpot
+ * has sent a full track, then the streamer in charge has it entirely. So because there is 
+ * only 2 tracks in UPnP, when receiving a flush, we can clear streamers queue, let the 
+ * current streamer (player) finish its job and ignore the PLAYBACK_START event, ignore the
+ * audio data that will be sent as it belongs to track n, until we have a new track. 
+ */
+
 class CSpotPlayer : public bell::Task {
 private:
     std::string name;
@@ -144,7 +158,11 @@ CSpotPlayer::~CSpotPlayer() {
 
 size_t CSpotPlayer::writePCM(uint8_t* data, size_t bytes, std::string_view trackUnique) {
     // make sure we don't have a dead lock with a disconnect()
-    if (!isRunning || isPaused || flushed) return 0;
+    if (!isRunning || isPaused) return 0;
+
+#ifndef SMART_FLUSH
+    if (flushed) return 0;
+#endif
 
     std::lock_guard lock(playerMutex);
 
@@ -152,10 +170,17 @@ size_t CSpotPlayer::writePCM(uint8_t* data, size_t bytes, std::string_view track
         // we can only accept 2 players (UPnP nextURI is one max)
         if (streamers.size() > 1) return 0;
 
+#ifdef SMART_FLUSH
+        flushed = false;
+#endif
         CSPOT_LOG(info, "trackUniqueId update %s => %s", streamTrackUnique.c_str(), trackUnique.data());
         streamTrackUnique = trackUnique;
         trackHandler(trackUnique);
     }
+
+#ifdef SMART_FLUSH
+    if (flushed) return bytes;
+#endif
 
     if (!streamers.empty() && streamers.front()->feedPCMFrames(data, bytes)) return bytes;
     else return 0;
@@ -256,6 +281,15 @@ void CSpotPlayer::trackHandler(std::string_view trackUnique) {
  void CSpotPlayer::eventHandler(std::unique_ptr<cspot::SpircHandler::Event> event) {
     switch (event->eventType) {
     case cspot::SpircHandler::EventType::PLAYBACK_START: {
+#ifdef SMART_FLUSH
+        // when flushed in this mode, ignore first PLAYBACK_START
+        if (flushed && streamTrackUnique != player->trackUnique) {
+            streamers.clear();
+            // make sure we don't falsy detect the re-send of current track
+            streamTrackUnique = player->trackUnique;
+            break;
+        }
+#endif
         // avoid conflicts with data callback
         std::scoped_lock lock(playerMutex);
 
@@ -272,9 +306,11 @@ void CSpotPlayer::trackHandler(std::string_view trackUnique) {
         player.reset();
         playlistEnd = false;
 
+#ifndef SMART_FLUSH
         // exit flushed state while transferring that to notify
         notify = !flushed;
         flushed = false;
+#endif
 
         // Spotify servers do not send volume at connection
         spirc->setRemoteVolume(volume);
@@ -289,13 +325,19 @@ void CSpotPlayer::trackHandler(std::string_view trackUnique) {
         }
         break;
     }
-    case cspot::SpircHandler::EventType::FLUSH:
+    case cspot::SpircHandler::EventType::FLUSH: {
+        std::scoped_lock lock(playerMutex);
+        CSPOT_LOG(info, "flush");
+        flushed = true;
+#ifndef SMART_FLUSH
+        shadowRequest(shadow, SPOT_STOP);
+#endif
+        break;
+    }
     case cspot::SpircHandler::EventType::NEXT:
     case cspot::SpircHandler::EventType::PREV: {  
         std::scoped_lock lock(playerMutex);
-        CSPOT_LOG(info, "flush/next/prev");
-        // in case of flush, cspot does not want a notifyAudioReachedPlayback!
-        if (event->eventType == cspot::SpircHandler::EventType::FLUSH) flushed = true;
+        CSPOT_LOG(info, "next/prev");
         shadowRequest(shadow, SPOT_STOP);
         break;
     }
@@ -436,6 +478,9 @@ void notify(CSpotPlayer *self, enum shadowEvent event, va_list args) {
         self->lastPosition = 0;
         if (self->notify) self->spirc->notifyAudioReachedPlayback();
         else self->notify = true;
+
+        // avoid weird cases where position is either random or last seek (will be corrected by SHADOW_TIME)
+        self->spirc->updatePositionMs(0);
 
         CSPOT_LOG(info, "track %s started by URL (%d)", self->player->streamId.c_str(), self->streamers.size());
         break;
