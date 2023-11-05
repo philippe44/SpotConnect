@@ -148,8 +148,8 @@ HTTPstreamer::~HTTPstreamer() {
 }
 
 void HTTPstreamer::setContentLength(int64_t contentLength) {
-    // a real content-length might be provided by codec
-    uint64_t length = encoder->initialize(trackInfo.duration - offset);
+    // a real content-length might be provided by codec (offset is negative)
+    uint64_t length = encoder->initialize(trackInfo.duration - (-offset));
     if (contentLength == HTTP_CL_REAL) this->contentLength = length ? length : INT64_MAX;
     else if (contentLength == HTTP_CL_KNOWN) this->contentLength = length ? length : HTTP_CL_NONE;
     else this->contentLength = contentLength;
@@ -174,7 +174,7 @@ void HTTPstreamer::flush() {
 bool HTTPstreamer::connect(int sock) {
     auto data = std::vector<uint8_t>();
 
-    // this proceeds by reading the full HTTP headers i on block
+    // this proceeds by reading the full HTTP headers in one block
     while (1) {
         char buffer[2048];
         int n = recv(sock, buffer, sizeof(buffer), 0);
@@ -207,6 +207,21 @@ bool HTTPstreamer::connect(int sock) {
 
     auto dump = std::string((char*)data.data(), data.size());
     CSPOT_LOG(info, "HTTP received =>\n%s", dump.c_str());
+
+    // refuse connection when we have already sent everything
+    if (state == DRAINED) {
+        std::stringstream responseStr;
+
+        responseStr << "HTTP/1.0 410 Gone\r\n";
+        responseStr << "Connection: close\r\n";
+        responseStr << "\r\n";
+
+        send(sock, responseStr.str().c_str(), responseStr.str().size(), 0);
+        CSPOT_LOG(info, "HTTP response =>\n%s", responseStr.str().c_str());
+
+        // still, this is not an error case
+        return true;
+    }
 
     // find the streamId (crude, who says c++ is better than c, really...)
     auto request = nextLine();
@@ -463,7 +478,7 @@ void HTTPstreamer::runTask() {
         }
 
         // terminate connection if required by HTTP peer
-        if (n < 0 || (!success && state <= CONNECTING)) {
+        if (n < 0 || (!success && state <= CONNECTING) || state == DRAINED) {
             CSPOT_LOG(info, "HTTP close %u", sock);
             closesocket(sock);
             sock = -1;

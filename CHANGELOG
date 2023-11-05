@@ -1,3 +1,7 @@
+0.4.1
+ - (spotupnp) respond with a "410 Gone" when drained and close connection
+ - (spotupnp) duration offset is negative, so invert it when calculation real size for content-length
+
 0.4.0
  - (spotupnp) players doing open/close/open on GET where not served (Riva)
  - (spotupnp) fix incomplete draining
