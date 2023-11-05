@@ -74,7 +74,7 @@ tMRConfig			glMRConfig = {
 							160,		// OggRate
 							false,		// Flow
 							true,		// Gapless
-							HTTP_CL_REAL,      
+							HTTP_CL_NONE,      
 							true,		// SendMetaData
 							false,		// SendCoverArt
 							"",			// artwork
@@ -162,7 +162,7 @@ static char usage[] =
 		   "  -U <user>            Spotify username\n"
 		   "  -P <password>        Spotify password\n"
 		   "  -l                   send continuous audio stream instead of separated tracks\n"
-		   "  -g <-3|-1|0>         HTTP content-length mode (-3:chunked, -1:none, 0:fixed)\n"
+		   "  -g <-3|-2|-1|0>      HTTP content-length mode (-3:chunked, -2:if known, -1:none, 0:fixed)\n"
 		   "  -e                   disable gapless\n"
 		   "  -u <version>         set the maximum UPnP version for search (default 1)\n"
 		   "  -N <format>          transform device name using C format (%s=name)\n"

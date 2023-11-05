@@ -6,7 +6,7 @@
 
 #pragma once
 
-enum { HTTP_CL_CHUNKED = -3, HTTP_CL_NONE = -1, HTTP_CL_REAL = 0 };
+enum { HTTP_CL_CHUNKED = -3, HTTP_CL_KNOWN = -2, HTTP_CL_NONE = -1, HTTP_CL_REAL = 0 };
 
 struct HTTPheaderList {
 	struct HTTPheaderList* next;

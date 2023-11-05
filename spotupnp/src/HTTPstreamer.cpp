@@ -149,10 +149,10 @@ HTTPstreamer::~HTTPstreamer() {
 
 void HTTPstreamer::setContentLength(int64_t contentLength) {
     // a real content-length might be provided by codec
-    this->contentLength = contentLength;
     uint64_t length = encoder->initialize(trackInfo.duration - offset);
-    if (contentLength == HTTP_CL_REAL) this->contentLength = length;
-    if (!this->contentLength) this->contentLength = HTTP_CL_NONE;
+    if (contentLength == HTTP_CL_REAL) this->contentLength = length ? length : INT64_MAX;
+    else if (contentLength == HTTP_CL_KNOWN) this->contentLength = length ? length : HTTP_CL_NONE;
+    else this->contentLength = contentLength;
 }
 
 void HTTPstreamer::getMetadata(metadata_t* metadata) {
@@ -337,78 +337,82 @@ ssize_t HTTPstreamer::sendChunk(int sock, uint8_t* data, ssize_t size) {
 }
 
 ssize_t HTTPstreamer::streamBody(int sock, struct timeval& timeout) {
-    size_t size = sizeof(scratch);
+    ssize_t size = 0;
 
-    // read fresh data or use cache
-    if (!useCache) {
-        size = encoder->read(scratch, size);
+    // cache has priority
+    if (useCache) {
+        size = cache.read(scratch, sizeof(scratch));
+        if (!size) useCache = false;
+    }
+
+    // not using cache or empty cache, get fresh data from encoder
+    if (!size) {
+        size = encoder->read(scratch, sizeof(scratch));
+
+        // nothing from encoder, try to drain if we should
+        if (!size && state == DRAINING) {
+            encoder->drain();
+            size = encoder->read(scratch, sizeof(scratch));
+        }
+
+        // cache what we have anyways
         cache.write(scratch, size);
-    } else {
-        size = cache.read(scratch, size);
-        if (!size) {
-            useCache = false;
-            return 0;
-        }
     }
 
-    // finishing the encoding process might have multiple draining calls
-    if (!size && state == DRAINING) {
-        encoder->drain();
-        size = encoder->read(scratch, size);
-    }
-
-    if (size) {
-        int offset = 0;
-
-        // check if ICY sending is active (len < ICY_INTERVAL)
-        if (icy.interval && size > icy.remain) {
-            int len_16 = 0;
-            char buffer[1024];
-            
-            if (icy.trackId != trackInfo.trackId) {
-                const char* format, *artist = trackInfo.artist.c_str();
-                
-                // there is room for 1 extra byte at the beginning for length
-                if (trackInfo.imageUrl.size()) format = "NStreamTitle='%s%s%s';StreamURL='%s';";
-                else format = "NStreamTitle='%s%s%s';";
-                len_16 = snprintf(buffer, sizeof(buffer), format, artist, *artist ? " - " : "", trackInfo.name.c_str(), trackInfo.imageUrl.c_str()) - 1;
-                len_16 = (len_16 + 15) / 16;
-
-                icy.trackId = trackInfo.trackId;
-                CSPOT_LOG(info, "ICY update %s", buffer + 1);
-            }
-
-            buffer[0] = len_16;
-
-            // send remaining data first
-            offset = icy.remain;
-            if (offset) sendChunk(sock, (uint8_t*)scratch, offset);
-            size -= offset;
-
-            // then send icy data
-            sendChunk(sock, (uint8_t*) buffer, len_16 * 16 + 1);
-            icy.remain = icy.interval;
-        }
-
-        ssize_t sent = sendChunk(sock, (uint8_t*) scratch + offset, size);
-
-        // update remaining count with desired length
-        if (icy.interval) icy.remain -= size;
-
-        if (sent != size) {
-#ifdef _WIN32
-            int error = WSAGetLastError();
-#else
-            int error = errno;
-#endif
-            CSPOT_LOG(error, "HTTP error for %s => send(%d, %zd) = %zd (err: %d)", streamId.c_str(), sock, size, sent, error);
-        }
-
-        timeout.tv_usec = 0;
-    } else {
+    // we really have nothing, let caller decide what's next
+    if (!size) {
         timeout.tv_usec = 50 * 1000;
+        return 0;
     }
 
+    int offset = 0;
+
+    // check if ICY sending is active (len < ICY_INTERVAL)
+    if (icy.interval && size > icy.remain) {
+        int len_16 = 0;
+        char buffer[1024];
+            
+        if (icy.trackId != trackInfo.trackId) {
+            const char* format, *artist = trackInfo.artist.c_str();
+                
+            // there is room for 1 extra byte at the beginning for length
+            if (trackInfo.imageUrl.size()) format = "NStreamTitle='%s%s%s';StreamURL='%s';";
+            else format = "NStreamTitle='%s%s%s';";
+            len_16 = snprintf(buffer, sizeof(buffer), format, artist, *artist ? " - " : "", trackInfo.name.c_str(), trackInfo.imageUrl.c_str()) - 1;
+            len_16 = (len_16 + 15) / 16;
+
+            icy.trackId = trackInfo.trackId;
+            CSPOT_LOG(info, "ICY update %s", buffer + 1);
+        }
+
+        buffer[0] = len_16;
+
+        // send remaining data first
+        offset = icy.remain;
+        if (offset) sendChunk(sock, (uint8_t*)scratch, offset);
+        size -= offset;
+
+        // then send icy data
+        sendChunk(sock, (uint8_t*) buffer, len_16 * 16 + 1);
+        icy.remain = icy.interval;
+    }
+
+    ssize_t sent = sendChunk(sock, (uint8_t*) scratch + offset, size);
+
+    // update remaining count with desired length
+    if (icy.interval) icy.remain -= size;
+
+    if (sent != size) {
+#ifdef _WIN32
+        int error = WSAGetLastError();
+#else
+        int error = errno;
+#endif
+        CSPOT_LOG(error, "HTTP error %d for %s => send %zd / %zd (%d)", error, streamId.c_str(), sent, size, sock);
+        return sent - size;
+    }
+
+    timeout.tv_usec = 0;   
     return size;
 }
 
@@ -468,8 +472,8 @@ void HTTPstreamer::runTask() {
         }
 
         // state is tested twice because streamBody is a call that needs to be made
-        if (state >= STREAMING && streamBody(sock, timeout) <= 0 && state == DRAINING) {
-            CSPOT_LOG(info, "HTTP streaming finished for %u (id: %s)", sock, streamId.c_str());
+        if (state >= STREAMING && ((n = streamBody(sock, timeout)) == 0) && state == DRAINING) {
+            CSPOT_LOG(info, "HTTP streaming finished for %d (id: %s)", sock, streamId.c_str());
             // chunked-encoding terminates by a last empty chunk ending sequence
             if (contentLength == HTTP_CL_CHUNKED) send(sock, "0\r\n\r\n", 5, 0);
             flush();
@@ -478,7 +482,11 @@ void HTTPstreamer::runTask() {
             sock = -1;
             state = DRAINED;
             if (onEoS) onEoS(this);
-            
+        } else if (n < 0) {
+            // something happened in streamBody, let's close the socket and wait for next request
+            CSPOT_LOG(info, "closing socket %d", sock);
+            closesocket(sock);
+            sock = -1;
         } else {
             timeout.tv_usec = 50 * 1000;
         }

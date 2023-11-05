@@ -1,3 +1,8 @@
+0.4.0
+ - (spotupnp) players doing open/close/open on GET where not served (Riva)
+ - (spotupnp) fix incomplete draining
+ - (spotupnp) add HTTP length of -2
+ 
 0.3.3
  - avoid gap when adding/removing items in the queue
  
