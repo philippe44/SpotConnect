@@ -105,7 +105,7 @@ private:
 public:
     mp3Codec(int bitrate = 160, bool store = false);
     virtual ~mp3Codec(void);
-    virtual int getBitrate(void) { return bitrate; }
+    virtual int getBitrate(void) { return bitrate * 1000; }
     virtual uint64_t initialize(int64_t duration);
     virtual bool pcmWrite(const uint8_t* data, size_t size);
     virtual void drain(void);
