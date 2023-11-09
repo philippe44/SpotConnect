@@ -521,7 +521,6 @@ static bool AddRaopDevice(struct sMR *Device, mdnssd_service_t *s) {
 		}
 	}
 
-	Device->Magic 			= MAGIC;
 	Device->Running 		= true;
 	// make sure that 1st volume is not missed
 	Device->VolumeStampRx 	= gettime_ms() - 2000;

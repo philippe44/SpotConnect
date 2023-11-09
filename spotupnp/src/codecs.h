@@ -49,7 +49,8 @@ public:
     std::string mimeType;
 
     baseCodec(std::string mimeType, bool store = false);
-    virtual ~baseCodec(void) { };
+    virtual ~baseCodec(void) { }
+    virtual int getBitrate(void) { return rate * channels * size * 8; }
     virtual void pcmParam(uint32_t rate, uint8_t channels = 2, uint8_t size = 2) { rate = rate; channels = channels; size = size; }
     virtual bool pcmWrite(const uint8_t* data, size_t size) { return pcm->write(data, size); }
     void unlock(void) { encoded->unlock(); }
@@ -88,6 +89,7 @@ private:
 public:
     flacCodec(int level = 5, bool store = false) : baseCodec("audio/flac", store), level(level) { }
     virtual ~flacCodec(void);
+    virtual int getBitrate(void) { return baseCodec::getBitrate() * 0.7; }
     virtual uint64_t initialize(int64_t duration);
     virtual bool pcmWrite(const uint8_t* data, size_t size);
     virtual void drain(void);
@@ -103,6 +105,7 @@ private:
 public:
     mp3Codec(int bitrate = 160, bool store = false);
     virtual ~mp3Codec(void);
+    virtual int getBitrate(void) { return bitrate; }
     virtual uint64_t initialize(int64_t duration);
     virtual bool pcmWrite(const uint8_t* data, size_t size);
     virtual void drain(void);

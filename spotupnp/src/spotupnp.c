@@ -37,9 +37,6 @@
 #define DISCOVERY_TIME 		30
 #define PRESENCE_TIMEOUT	(DISCOVERY_TIME * 6)
 
-#define MAX_DEVICES			32
-#define HTTP_FIXED_LENGTH	INT_MAX
-
 /* for the haters of GOTO statement: I'm not a big fan either, but there are
 cases where they make code more leightweight and readable, instead of tons of
 if statements. In short function, I use them for loop exit and cleanup instead
@@ -52,7 +49,7 @@ of code repeating and break/continue
 int32_t  			glLogLimit = -1;
 UpnpClient_Handle 	glControlPointHandle;
 struct sMR			*glMRDevices;
-int					glMaxDevices = MAX_DEVICES;
+int					glMaxDevices = 32;
 uint16_t			glPortBase, glPortRange;
 char				glInterface[128] = "?";
 char				glCredentialsPath[STR_LEN];
@@ -1066,7 +1063,6 @@ static bool AddMRDevice(struct sMR* Device, char* UDN, IXML_Document* DescDoc, c
 
 	LOG_SDEBUG("UDN:\t%s\nFriendlyName:\t%s", UDN, friendlyName);
 
-	Device->Magic = MAGIC;
 	Device->SpotState = SPOT_STOP;
 	Device->State = STOPPED;
 	Device->LastSeen = now / 1000;

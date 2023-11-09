@@ -21,7 +21,7 @@
 #include "metadata.h"
 #include "spotify.h"
 
-#define VERSION "v0.4.1"" ("__DATE__" @ "__TIME__")"
+#define VERSION "v0.4.2-dev"" ("__DATE__" @ "__TIME__")"
 
 /*----------------------------------------------------------------------------*/
 /* typedefs */
@@ -30,9 +30,7 @@
 #define STR_LEN	256
 #define CREDENTIALS_LEN	1024
 
-#define MAX_PROTO		128
 #define MAX_RENDERERS	32
-#define MAGIC			0xAABBCCDD
 #define RESOURCE_LENGTH	250
 
 enum 	eMRstate { UNKNOWN, STOPPED, PLAYING, PAUSED, TRANSITIONING };
@@ -45,7 +43,7 @@ struct sService {
 	char ControlURL	[RESOURCE_LENGTH];
 	Upnp_SID		SID;
 	int32_t			TimeOut;
-	uint32_t			Failed;
+	uint32_t		Failed;
 };
 
 typedef struct sMRConfig
@@ -81,7 +79,6 @@ typedef struct sMRConfig
 } tMRConfig;
 
 struct sMR {
-	uint32_t Magic;
 	bool  Running;
 	tMRConfig Config;
 	char Credentials[CREDENTIALS_LEN];

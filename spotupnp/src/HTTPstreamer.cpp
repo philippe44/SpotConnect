@@ -149,8 +149,9 @@ HTTPstreamer::~HTTPstreamer() {
 
 void HTTPstreamer::setContentLength(int64_t contentLength) {
     // a real content-length might be provided by codec (offset is negative)
-    uint64_t length = encoder->initialize(trackInfo.duration - (-offset));
-    if (contentLength == HTTP_CL_REAL) this->contentLength = length ? length : INT64_MAX;
+    uint64_t duration = trackInfo.duration - (-offset);
+    uint64_t length = encoder->initialize(duration);
+    if (contentLength == HTTP_CL_REAL) this->contentLength = length ? length : (duration * encoder->getBitrate()) / (8 * 1000);
     else if (contentLength == HTTP_CL_KNOWN) this->contentLength = length ? length : HTTP_CL_NONE;
     else this->contentLength = contentLength;
 }

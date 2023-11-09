@@ -19,7 +19,7 @@
 #include "cross_util.h"
 #include "spotify.h"
 
-#define VERSION "v0.4.1" " (" __DATE__ " @ " __TIME__ ")"
+#define VERSION "v0.4.2-dev" " (" __DATE__ " @ " __TIME__ ")"
 
 /*----------------------------------------------------------------------------*/
 /* typedefs */
@@ -28,9 +28,7 @@
 #define STR_LEN 256
 #define CREDENTIALS_LEN	1024
 
-#define MAX_PROTO		128
 #define MAX_RENDERERS	32
-#define MAGIC			0xAABBCCDD
 #define RESOURCE_LENGTH	250
 #define	SCAN_TIMEOUT 	15
 #define SCAN_INTERVAL	30
@@ -60,7 +58,6 @@ typedef struct sMRConfig
 
 
 struct sMR {
-	uint32_t Magic;
 	bool  Running;
 	uint32_t Expired;
 	tMRConfig Config;
