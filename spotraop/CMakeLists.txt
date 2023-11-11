@@ -152,12 +152,13 @@ if(NOT APPLE AND NOT CMAKE_SYSTEM_NAME STREQUAL "SunOS")
     target_link_options(${PROJECT}-static PUBLIC -static)
     target_include_directories(${PROJECT}-static PRIVATE "." ${EXTRA_INCLUDES})
     target_compile_definitions(${PROJECT}-static PRIVATE -DUPNP_STATIC_LIB -D_GNU_SOURCE -DUSE_SSL -DSSL_STATIC_LIB)
-    # openssl library must appear first in link order for static link
+    target_link_libraries(${PROJECT}-static PUBLIC ${EXTRA_LIBS} cspot libraop)    
+    # dl must be repeated after openssl
     if(MSVC)
-        target_link_libraries(${PROJECT}-static PRIVATE ${BASE}/spotraop/libopenssl/targets/${HOST}/${PLATFORM}/libopenssl_static${LIBRARY_SUFFIX})
+        target_link_libraries(${PROJECT}-static PUBLIC ${BASE}/spotraop/libopenssl/targets/${HOST}/${PLATFORM}/libopenssl_static${LIBRARY_SUFFIX})
     else()
-        target_link_libraries(${PROJECT}-static PRIVATE ${BASE}/spotraop/libopenssl/targets/${HOST}/${PLATFORM}/libopenssl${LIBRARY_SUFFIX})
+        target_link_libraries(${PROJECT}-static PUBLIC ${BASE}/spotraop/libopenssl/targets/${HOST}/${PLATFORM}/libopenssl${LIBRARY_SUFFIX})
+        target_link_libraries(${PROJECT}-static PUBLIC dl)    
     endif()
-    target_link_libraries(${PROJECT}-static PUBLIC cspot libraop ${EXTRA_LIBS})
 endif()
 

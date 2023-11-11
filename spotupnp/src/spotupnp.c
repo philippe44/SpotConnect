@@ -171,15 +171,15 @@ static char usage[] =
 		   "  -m <n1,n2...>        exclude devices whose model include tokens\n"
 		   "  -n <m1,m2,...>       exclude devices whose name includes tokens\n"
 		   "  -o <m1,m2,...>       include only listed models; overrides -m and -n (use <NULL> if player don't return a model)\n"
-		   "  -d <log>=<level>     Set logging level, logs: all|main|util|upnp, level: error|warn|info|debug|sdebug\n"
+		   "  -d <log>=<level>     set logging level, logs: all|main|util|upnp, level: error|warn|info|debug|sdebug\n"
 		   "  -c <mp3[:<rate>]|flc[:0..9]|wav|pcm> audio format send to player\n"
 
 #if LINUX || FREEBSD
-		   "  -z \t\t\tDaemonize\n"
+		   "  -z                   daemonize\n"
 #endif
-		   "  -Z \t\t\tNOT interactive\n"
-		   "  -k \t\t\tImmediate exit on SIGQUIT and SIGTERM\n"
-		   "  -t \t\t\tLicense terms\n"
+		   "  -Z                   NOT interactive\n"
+		   "  -k                   immediate exit on SIGQUIT and SIGTERM\n"
+		   "  -t                   license terms\n"
 		   "\n"
 		   "Build options:"
 #if LINUX

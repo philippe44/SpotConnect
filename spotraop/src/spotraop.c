@@ -85,6 +85,7 @@ tMRConfig			glMRConfig = {
 							120,			 // RemoveTimeout
 							false,			 // Encryption
 							"",				 // RaopCredentials
+							"",				 // Password
 							2000,			 // ReadAhead
 							2,				 // VolumeMode = HARDWARE
 							VOLUME_FEEDBACK, // VolumeFeedback
@@ -116,10 +117,10 @@ static pthread_t			glActiveRemoteThread;
 static void					*glConfigID = NULL;
 static char					glConfigName[STR_LEN] = "./config.xml";
 static struct in_addr 		glHost;
-static bool					glPairing;
+static bool					glPairing, glPassword;
 static bool					glUpdated;
-static char*				glUserName;
-static char*				glPassword;
+static char*				glSpotifyUserName;
+static char*				glSpotifyPassword;
 static char*				glNameFormat = "%s+";
 
 static char usage[] =
@@ -133,6 +134,7 @@ static char usage[] =
 		"  -j  	               store Spotify credentials in XML config file\n"
 		"  -U <user>           Spotify username\n"
 		"  -P <password>       Spotify password\n"
+	    "  -L                  set AirPlay player password\n"
 		"  -c <alac[|pcm>      audio format send to player\n"
 		"  -r <96|160|320>     set Spotify vorbis codec rate\n"
 		"  -N <format>         transform device name using C format (%s=name)\n"
@@ -145,14 +147,14 @@ static char usage[] =
 		"  -m <n1,n2...>       exclude devices whose model include tokens\n"
 		"  -n <m1,m2,...>      exclude devices whose name includes tokens\n"
 		"  -o <m1,m2,...>      include only listed models; overrides -m and -n (use <NULL> if player don't return a model)\n"
-		"  -d <log>=<level>    Set logging level, logs: all|main|util|upnp, level: error|warn|info|debug|sdebug\n"
+		"  -d <log>=<level>    set logging level, logs: all|main|util|upnp, level: error|warn|info|debug|sdebug\n"
 
 #if LINUX || FREEBSD || SUNOS
-		   "  -z \t\t\tDaemonize\n"
+		   "  -z               daemonize\n"
 #endif
-		   "  -Z \t\t\tNOT interactive\n"
-		   "  -k \t\t\tImmediate exit on SIGQUIT and SIGTERM\n"
-		   "  -t \t\t\tLicense terms\n"
+		   "  -Z               NOT interactive\n"
+		   "  -k               immediate exit on SIGQUIT and SIGTERM\n"
+		   "  -t               license terms\n"
 		   "\n"
 		   "Build options:"
 #if LINUX
@@ -592,16 +594,28 @@ static bool AddRaopDevice(struct sMR *Device, mdnssd_service_t *s) {
 	if ((Device->Config.Encryption || Auth) && strchr(Cipher, '1'))	Crypto = RAOP_RSA;
 	else Crypto = RAOP_CLEAR;
 
+	char* password = NULL;
+
+	if (*Device->Config.Password) {
+		char* encrypted;
+		asprintf(&encrypted, "%s==", Device->Config.Password);
+		password = calloc(strlen(encrypted), 1);
+		base64_decode(encrypted, password);
+		for (int i = 0; password[i]; i++) password[i] ^= Device->UDN[i];
+		free(encrypted);
+	}
+
 	Device->Raop = raopcl_create(glHost, glPortBase, glPortRange,
 								 glDACPid, Device->ActiveRemote,
 								 Device->Config.AlacEncode ? RAOP_ALAC : RAOP_ALAC_RAW , FRAMES_PER_BLOCK,
 								 (uint32_t) MS2TS(Device->Config.ReadAhead, SampleRate ? atoi(SampleRate) : 44100),
-								 Crypto, Auth, Device->Config.RaopCredentials, Cipher, md,
+								 Crypto, Auth, Device->Config.RaopCredentials, password, Cipher, md,
 								 SampleRate ? atoi(SampleRate) : 44100,
 								 SampleSize ? atoi(SampleSize) : 16,
 								 Channels ? atoi(Channels) : 2,
 								 Device->Volume);
 
+	NFREE(password);
 	NFREE(am);
 	NFREE(md);
 	NFREE(pk);
@@ -947,7 +961,7 @@ static bool Start(void) {
 	}
 
 	// start cspot
-	spotOpen(glPortBase, glPortRange, glUserName, glPassword);
+	spotOpen(glPortBase, glPortRange, glSpotifyUserName, glSpotifyPassword);
 
 	LOG_INFO("Binding to %s", inet_ntoa(glHost));
 
@@ -1040,7 +1054,7 @@ static bool ParseArgs(int argc, char **argv) {
 		if (strstr("abcrxifpmnodJUPN", opt) && optind < argc - 1) {
 			optarg = argv[optind + 1];
 			optind += 2;
-		} else if (strstr("tzZIklj"
+		} else if (strstr("tzZIkljL"
 #if defined(RESAMPLE)
 						  "uR"
 #endif
@@ -1099,6 +1113,9 @@ static bool ParseArgs(int argc, char **argv) {
 		case 'l':
 			glPairing = true;
 			break;
+		case 'L':
+			glPassword = true;
+			break;
 		case 'J':
 			strncpy(glCredentialsPath, optarg, sizeof(glCredentialsPath) - 1);
 			break;
@@ -1106,10 +1123,10 @@ static bool ParseArgs(int argc, char **argv) {
 			glCredentials = true;
 			break;
 		case 'U':
-			glUserName = optarg;
+			glSpotifyUserName = optarg;
 			break;
 		case 'P':
-			glPassword = optarg;
+			glSpotifyPassword = optarg;
 			break;
 #if LINUX || FREEBSD || SUNOS
 		case 'z':
@@ -1233,6 +1250,41 @@ int main(int argc, char *argv[])
 				}
 			}
 			NFREE(UDN); NFREE(secret);
+		}
+
+		Stop();
+		return(0);
+	}
+
+	// just set password(s)
+	if (glPassword) {
+		glDiscovery = true;
+		Start();
+
+		printf("\n*************** Wait 5 seconds for player discovery **************\n");
+		sleep(5);
+		printf("\n***************************** done *******************************\n");
+
+		char* UDN = NULL, * passwd = NULL;
+		while (AirPlayPassword(NULL, IsExcluded, &UDN, &passwd)) {
+			if (!UDN) continue;
+			for (int i = 0; i < MAX_RENDERERS; i++) {
+				if (glMRDevices[i].Running && !strcasecmp(glMRDevices[i].UDN, UDN)) {
+					*glMRDevices[i].Config.Password = '\0';
+					if (passwd && *passwd) {
+						for (int j = 0; passwd[j]; j++) passwd[j] ^= glMRDevices[i].UDN[j];
+						char* encrypted;
+						size_t len = strlen(passwd);
+						base64_encode(passwd, len, &encrypted);
+						encrypted[strlen(encrypted) - 2] = '\0';
+						strcpy(glMRDevices[i].Config.Password, encrypted);
+						free(encrypted);
+					}
+					SaveConfig(glConfigName, glConfigID, false);
+					break;
+				}
+			}
+			NFREE(UDN); NFREE(passwd);
 		}
 
 		Stop();

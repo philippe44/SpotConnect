@@ -21,7 +21,7 @@
 #include "metadata.h"
 #include "spotify.h"
 
-#define VERSION "v0.4.2-dev"" ("__DATE__" @ "__TIME__")"
+#define VERSION "v0.5.0"" ("__DATE__" @ "__TIME__")"
 
 /*----------------------------------------------------------------------------*/
 /* typedefs */

@@ -99,6 +99,8 @@ void SaveConfig(char *name, void *ref, bool full) {
 		if (old_doc && ((dev_node = FindMRConfig(old_doc, p->UDN)) != NULL)) {
 			ixmlDocument_importNode(doc, dev_node, true, &dev_node);
 			ixmlNode_appendChild((IXML_Node*)root, dev_node);
+			if (*p->Config.Password) XMLUpdateNode(doc, dev_node, true, "password", p->Config.Password);
+			else XMLDelNode(dev_node, "password");
 			XMLUpdateNode(doc, dev_node, true, "credentials", p->Config.Credentials);
 		} else {
 			dev_node = XMLAddNode(doc, root, "device", NULL);
@@ -153,6 +155,7 @@ static void LoadConfigItem(tMRConfig *Conf, char *name, char *val) {
 	if (!strcmp(name, "remove_timeout")) Conf->RemoveTimeout = atol(val);
 	if (!strcmp(name, "encryption")) Conf->Encryption = atol(val);
 	if (!strcmp(name, "raop_credentials")) strcpy(Conf->RaopCredentials, val);
+	if (!strcmp(name, "password")) strcpy(Conf->Password, val);
 	if (!strcmp(name, "credentials")) strcpy(Conf->Credentials, val);
 	if (!strcmp(name, "read_ahead")) Conf->ReadAhead = atol(val);
 	if (!strcmp(name, "send_metadata")) Conf->SendMetaData = atol(val);

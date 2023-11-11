@@ -1,5 +1,6 @@
-0.4.2-dev
- - better estimated birate
+0.5.0
+ - (spotraop) add player (airplay) password management
+ - (spotupnp) better estimated birate
 
 0.4.1
  - (spotupnp) respond with a "410 Gone" when drained and close connection

@@ -19,7 +19,7 @@
 #include "cross_util.h"
 #include "spotify.h"
 
-#define VERSION "v0.4.2-dev" " (" __DATE__ " @ " __TIME__ ")"
+#define VERSION "v0.5.0" " (" __DATE__ " @ " __TIME__ ")"
 
 /*----------------------------------------------------------------------------*/
 /* typedefs */
@@ -50,6 +50,7 @@ typedef struct sMRConfig
 	int			RemoveTimeout;
 	bool		Encryption;
 	char		RaopCredentials[STR_LEN];
+	char		Password[STR_LEN];
 	int 		ReadAhead;
 	int			VolumeMode;
 	int			VolumeFeedback;
