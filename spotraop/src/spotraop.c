@@ -598,11 +598,17 @@ static bool AddRaopDevice(struct sMR *Device, mdnssd_service_t *s) {
 
 	if (*Device->Config.Password) {
 		char* encrypted;
+
+		// add up to 2 trailing '=' and adjust size
 		asprintf(&encrypted, "%s==", Device->Config.Password);
-		password = calloc(strlen(encrypted), 1);
-		base64_decode(encrypted, password);
-		for (int i = 0; password[i]; i++) password[i] ^= Device->UDN[i];
+		encrypted[strlen(Device->Config.Password) + strlen(Device->Config.Password) % 4] = '\0';
+		password = malloc(strlen(encrypted));
+		size_t len = base64_decode(encrypted, password);
 		free(encrypted);
+
+		// xor with UDN
+		for (size_t i = 0; i < len; i++) password[i] ^= Device->UDN[i];
+		password[len] = '\0';
 	}
 
 	Device->Raop = raopcl_create(glHost, glPortBase, glPortRange,
@@ -1268,15 +1274,20 @@ int main(int argc, char *argv[])
 		char* UDN = NULL, * passwd = NULL;
 		while (AirPlayPassword(NULL, IsExcluded, &UDN, &passwd)) {
 			if (!UDN) continue;
+
 			for (int i = 0; i < MAX_RENDERERS; i++) {
 				if (glMRDevices[i].Running && !strcasecmp(glMRDevices[i].UDN, UDN)) {
 					*glMRDevices[i].Config.Password = '\0';
 					if (passwd && *passwd) {
-						for (int j = 0; passwd[j]; j++) passwd[j] ^= glMRDevices[i].UDN[j];
 						char* encrypted;
 						size_t len = strlen(passwd);
+
+						// xor it with UDN
+						for (size_t j = len; j--; passwd[j] ^= glMRDevices[i].UDN[j]);
 						base64_encode(passwd, len, &encrypted);
-						encrypted[strlen(encrypted) - 2] = '\0';
+
+						// remove trailing '='
+						for (char* p = encrypted + strlen(encrypted); *--p == '='; *p = '\0');
 						strcpy(glMRDevices[i].Config.Password, encrypted);
 						free(encrypted);
 					}
