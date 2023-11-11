@@ -60,6 +60,7 @@ For each platform, there is a normal and a '-static' version. This one includes 
 - A config file (default `config.xml`) can be created for advanced tweaking (a reference version can be generated using  the `-i <file>` command line). To specify a config file, use `-x <file>`.
 - When you have more than one ethernet card, you case use `-b [ip|iface]` to set what card to bind to. Note that 0.0.0.0 is not authorized
 - Use `-l` for AppleTV pairing mode
+- Use `-L` to set password for AirPlay devices (these password will be stored obfuscated in .xml config file)
 - Use `-b [ip|iface][:port]` to set network interface (ip@ or interface name as reported by ifconfig/ipconfig) to use and, for spotupnp only, UPnP port to listen to (must be above the default 49152)
 - Use `-r` to set Spotify's Vorbis encoding rate
 - Use `-N "<format>"` to change the default name of Spotify players (the player name followed by '+' by default). It's a C-string format where '%s' is the player's name, so default is "%s+"
