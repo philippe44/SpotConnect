@@ -147,7 +147,6 @@ target_compile_definitions(${PROJECT} PRIVATE -DUPNP_STATIC_LIB -D_GNU_SOURCE -D
 target_link_libraries(${PROJECT} PUBLIC cspot libraop ${EXTRA_LIBS})
 
 # Configure the targets
-#if(NOT APPLE AND NOT CMAKE_SYSTEM_NAME STREQUAL "SunOS")
 if(NOT CMAKE_SYSTEM_NAME STREQUAL "SunOS")
     add_executable(${PROJECT}-static ${SOURCES})
 	if (NOT APPLE)
