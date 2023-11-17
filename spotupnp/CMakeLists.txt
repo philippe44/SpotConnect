@@ -114,9 +114,11 @@ target_include_directories(cspot PRIVATE ${BASE}/common/libcodecs/targets/includ
 
 # Configure the target
 if(NOT MSVC)
-	if(NOT APPLE AND NOT CMAKE_SYSTEM_NAME STREQUAL "SunOS")
+	if(NOT CMAKE_SYSTEM_NAME STREQUAL "SunOS")
         add_executable(${PROJECT}-static ${SOURCES})
-        target_link_options(${PROJECT}-static PUBLIC -static)
+		if (NOT APPLE)
+			target_link_options(${PROJECT}-static PUBLIC -static)
+		endif()
         target_include_directories(${PROJECT}-static PRIVATE "." ${EXTRA_INCLUDES})
         target_compile_definitions(${PROJECT}-static PRIVATE -DFLAC__NO_DLL -DUPNP_STATIC_LIB -D_GNU_SOURCE)
         target_link_libraries(${PROJECT}-static PUBLIC cspot ${EXTRA_LIBS})

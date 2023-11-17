@@ -137,7 +137,7 @@ CSpotPlayer::CSpotPlayer(char* name, char* id, char *credentials, struct in_addr
     clientConnected(1), codec(codec), id(id), addr(addr), flow(flow),
     name(name), credentials(credentials), format(format), shadow(shadow), 
     playerMutex(mutex) {
-    this->contentLength = (flow && !contentLength) ? HTTP_CL_NONE : contentLength;
+    this->contentLength = (flow && contentLength == HTTP_CL_REAL) ? HTTP_CL_NONE : contentLength;
 }
 
 CSpotPlayer::~CSpotPlayer() {
@@ -268,7 +268,6 @@ void CSpotPlayer::trackHandler(std::string_view trackUnique) {
         // play unless already paused
         if (!isPaused) shadowRequest(shadow, SPOT_PLAY);
  
-        //streamers.emplace_front(streamer);
         streamers.push_front(streamer);
         streamer->startTask();
     } else {

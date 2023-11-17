@@ -96,7 +96,7 @@ do
 
 	if [ -n "$clean" ] || [ -z "$(ls -A)" ]; then
 		rm -rf *
-		rm $pwd/bin/spotupnp-$host-$platform*
+		rm -f $pwd/bin/spotupnp-$host-$platform*
 		cmake $pwd -DCMAKE_SYSTEM_NAME=${cmake_name["$host"]:-"$host"} -DCMAKE_SYSTEM_PROCESSOR=${cmake_processor["$platform"]:-"$platform"} -DCMAKE_C_COMPILER=$CC -DCMAKE_CXX_COMPILER=$CXX -DHOST=$host -DPLATFORM=$platform -DBELL_EXTERNAL_MBEDTLS=$pwd/../common/libmbedtls
 	fi
 	
@@ -107,8 +107,10 @@ do
 	# do an univeral build for macos
 	if [[ $host =~ macos ]]; then
 		universal=$pwd/bin/spotupnp-macos
-		rm -f $universal
-		lipo -create -output $universal $universal-*
+		rm -f $universal $universal-static
+		files=$(ls $universal-*)
+		lipo -create -output $universal $(grep -v '\-static' <<< $files)
+		lipo -create -output $universal-static $(grep '\-static' <<< $files)
 	fi
 done
 
