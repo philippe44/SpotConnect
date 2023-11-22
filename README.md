@@ -258,6 +258,7 @@ git clone http://github.com/philippe44/spotconnect
 cd ~/spotconnect && git submodule update --init
 cd ~/spotconnect/common/cspot && git submodule update --init --recursive
 ```
+NB: you can speed up all clonings by a lot by adding `--depth 1` option to just to a shallow clone (you probably don't need all the commits)
 - Build makefiles
 ```
 cd ~/spotconnect/spotupnp && mkdir build 
