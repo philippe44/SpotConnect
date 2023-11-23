@@ -1,3 +1,6 @@
+0.5.2
+ - (spotupnp) refactor codec class and fix mp3 encoding on small CPU platform
+ 
 0.5.1
  - fix queue multiple insertion
  - update libraop
