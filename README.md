@@ -258,11 +258,15 @@ git clone http://github.com/philippe44/spotconnect
 cd ~/spotconnect && git submodule update --init
 cd ~/spotconnect/common/cspot && git submodule update --init --recursive
 ```
+NB: you can speed up all clonings by a lot by adding `--depth 1` option to just to a shallow clone (you probably don't need all the commits)
+
 - Build makefiles
 ```
 cd ~/spotconnect/spotupnp && mkdir build 
-cd ~/spotconnect/spotupnp/build && rm -rf * && cmake ..
+cd ~/spotconnect/spotupnp/build && rm -rf * && cmake .. [-DHOST=<linux|freefbs|solaris|macos>] [-DPLATFORM=<x86|x86_64|arm|armv5|armv6|arm|aarch74|sparc|mips>]
 ```
+NB: with some older version of cmake, guessing the compiler made by root CMakefile.txt might fail. In such case, set the **optional** HOST and PLATFORM macros.
+
 - Build (only required step if you just change source code)
 ```
 cd ~/spotconnect/spotupnp/build
