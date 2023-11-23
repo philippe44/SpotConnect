@@ -100,16 +100,15 @@ bool byteBuffer::write(const uint8_t* src, size_t size) {
 #define PACK( __Declaration__ ) __pragma( pack(push, 1) ) __Declaration__ __pragma( pack(pop))
 #endif
 
-
 /****************************************************************************************
  * Base codec
  */
 
 uint32_t baseCodec::index = 0;
 
-baseCodec::baseCodec(std::string mimeType, bool store) : mimeType(mimeType) {
+baseCodec::baseCodec(codecSettings *settings, std::string mimeType, bool store) : settings(settings), mimeType(mimeType) {
     FILE* storage = NULL;
-
+    
     if (store) {
         char type[5] = { 0 };
         (void)!sscanf(mimeType.c_str(), "audio/%4[^;]", type);
@@ -121,15 +120,25 @@ baseCodec::baseCodec(std::string mimeType, bool store) : mimeType(mimeType) {
     encoded = pcm;
 }
 
-
 /****************************************************************************************
  * PCM codec
  */
 
-void pcmCodec::pcmParam(uint32_t rate, uint8_t channels, uint8_t size) {
-    baseCodec:pcmParam(rate, channels, size);
-    mimeType = "audio/L" + std::to_string(size * 8) + ";rate=" + std::to_string(rate) +
-        ";channels=" + std::to_string(channels);
+class pcmCodec : public::baseCodec {
+private:
+    codecSettings settings;
+
+public:
+    pcmCodec(codecSettings *settings, bool store = false);
+    virtual uint64_t initialize(int64_t duration);
+    virtual size_t read(uint8_t* dst, size_t size, size_t min);
+    virtual uint8_t* readInner(size_t& size);
+};
+
+pcmCodec::pcmCodec(codecSettings *settings, bool store) : settings(*settings), 
+                   baseCodec(&this->settings, "audio/L16;rate=44100;channels=2", store) {
+    mimeType = "audio/L" + std::to_string(settings->size * 8) + ";rate=" + std::to_string(settings->rate) +
+               ";channels=" + std::to_string(settings->channels);
 }
 
 uint8_t* pcmCodec::readInner(size_t& size) {
@@ -170,12 +179,22 @@ size_t pcmCodec::read(uint8_t* dst, size_t size, size_t min) {
 }
 
 uint64_t pcmCodec::initialize(int64_t duration) {
-    return (((uint64_t) rate * channels * size * duration) / 1000) & ~1LL;
+    return (((uint64_t) settings.rate * settings.channels * settings.size * duration) / 1000) & ~1LL;
 }
 
 /****************************************************************************************
  * WAV codec
  */
+
+class wavCodec : public::baseCodec {
+private:
+    codecSettings settings;
+    size_t position = 0;
+
+public:
+    wavCodec(codecSettings *settings, bool store = false) : settings(*settings), baseCodec(&this->settings, "audio/wav", store) {  }
+    virtual uint64_t initialize(int64_t duration);
+};
 
 uint64_t wavCodec::initialize(int64_t duration) {
     struct PACK(header {
@@ -206,7 +225,7 @@ uint64_t wavCodec::initialize(int64_t duration) {
     };
 
     // get the maximum payload size
-    uint64_t length = duration ? ((uint64_t) rate * channels * size * duration) / 1000 : UINT32_MAX;
+    uint64_t length = duration ? ((uint64_t) settings.rate * settings.channels * settings.size * duration) / 1000 : UINT32_MAX;
     length = std::min(length, (uint64_t) (UINT32_MAX - offsetof(struct header, subchunk2Id)));
 
 #if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
@@ -231,6 +250,22 @@ uint64_t wavCodec::initialize(int64_t duration) {
  * FLAC codec
  */
 
+class flacCodec : public::baseCodec {
+private:
+    flacSettings settings;
+    void* flac = NULL;
+    int level;
+    bool drained = false;
+
+public:
+    flacCodec(flacSettings *settings, bool store = false) : settings(*settings), baseCodec(&this->settings, "audio/flac", store), level(level) { }
+    virtual ~flacCodec(void);
+    virtual int getBitrate(void) { return baseCodec::getBitrate() * 0.7; }
+    virtual uint64_t initialize(int64_t duration);
+    virtual bool pcmWrite(const uint8_t* data, size_t size);
+    virtual void drain(void);
+};
+
 flacCodec::~flacCodec(void) {
     if (flac) FLAC__stream_encoder_delete((FLAC__StreamEncoder*)flac);
 }
@@ -251,9 +286,9 @@ uint64_t flacCodec::initialize(int64_t duration) {
 
     FLAC__bool ok = FLAC__stream_encoder_set_verify(codec, false);
     ok &= FLAC__stream_encoder_set_compression_level(codec, level);
-    ok &= FLAC__stream_encoder_set_channels(codec, channels);
-    ok &= FLAC__stream_encoder_set_bits_per_sample(codec, size * 8);
-    ok &= FLAC__stream_encoder_set_sample_rate(codec, rate);
+    ok &= FLAC__stream_encoder_set_channels(codec, settings.channels);
+    ok &= FLAC__stream_encoder_set_bits_per_sample(codec, settings.size * 8);
+    ok &= FLAC__stream_encoder_set_sample_rate(codec, settings.rate);
     ok &= FLAC__stream_encoder_set_blocksize(codec, 1024);
     ok &= FLAC__stream_encoder_set_streamable_subset(codec, true);
     ok &= !FLAC__stream_encoder_init_stream(codec, flacWrite, NULL, NULL, NULL, this);
@@ -288,7 +323,27 @@ void flacCodec::drain(void) {
  * MP3 codec
  */
 
-mp3Codec::mp3Codec(int bitrate, bool store) : baseCodec("audio/mpeg", store), bitrate(bitrate) {
+class mp3Codec : public::baseCodec {
+private:
+    void* mp3 = NULL;
+    bool drained = false;
+    int blockSize;
+    mp3Settings settings;
+    int16_t* scratch;
+
+    void encode(void);
+
+public:
+    mp3Codec(mp3Settings *settings, bool store = false);
+    virtual ~mp3Codec(void);
+    virtual int getBitrate(void) { return settings.bitrate * 1000; }
+    virtual uint64_t initialize(int64_t duration);
+    virtual size_t read(uint8_t* dst, size_t size, size_t min = 0);
+    virtual uint8_t* readInner(size_t& size);
+    virtual void drain(void);
+};
+
+mp3Codec::mp3Codec(mp3Settings *settings, bool store) : settings(*settings), baseCodec(&this->settings, "audio/mpeg", store) {
     pcm.reset();
     pcm = std::make_shared<byteBuffer>();
 }
@@ -329,9 +384,9 @@ uint64_t mp3Codec::initialize(int64_t duration) {
     shine_config_t config;
     shine_set_config_mpeg_defaults(&config.mpeg);
 
-    config.wave.samplerate = rate;
+    config.wave.samplerate = settings.rate;
     config.wave.channels = PCM_STEREO;
-    config.mpeg.bitr = bitrate;
+    config.mpeg.bitr = settings.bitrate;
     config.mpeg.mode = STEREO;
     mp3 = shine_initialise(&config);
 
@@ -341,18 +396,25 @@ uint64_t mp3Codec::initialize(int64_t duration) {
     return 0;
 }
 
-bool mp3Codec::pcmWrite(const uint8_t* data, size_t size) {
-    bool done = pcm->write(data, size);
+void mp3Codec::encode(void) {
     auto space = std::max(blockSize, 16384);
 
     while (encoded->space() >= space && pcm->used() > blockSize) {
         int len;
-        pcm->read((uint8_t*) scratch, blockSize);
-        uint8_t* coded = shine_encode_buffer_interleaved((shine_t) mp3, scratch, &len);
+        pcm->read((uint8_t*)scratch, blockSize);
+        uint8_t* coded = shine_encode_buffer_interleaved((shine_t)mp3, scratch, &len);
         encoded->write(coded, len);
     }
-    
-    return done;
+}
+
+size_t mp3Codec::read(uint8_t* dst, size_t size, size_t min) { 
+    encode();
+    return encoded->read(dst, size, min); 
+}
+
+uint8_t* mp3Codec::readInner(size_t& size) { 
+    encode();
+    return encoded->readInner(size); 
 }
 
 void mp3Codec::drain(void) {
@@ -362,3 +424,30 @@ void mp3Codec::drain(void) {
     encoded->write(coded, len);
     drained = true;
 }
+
+/****************************************************************************************
+ * Interface that will figure out which derived class to create
+ */
+
+std::unique_ptr<baseCodec> createCodec(codecSettings::type type, codecSettings* settings, bool store) {
+    codecSettings defaults;
+    if (!settings) settings = &defaults;
+
+    switch (type) {
+    case codecSettings::PCM:
+        return std::make_unique<pcmCodec>(settings, store);
+        break;
+    case codecSettings::WAV:
+        return std::make_unique<wavCodec>(settings, store);
+        break;
+    case codecSettings::FLAC:
+        return std::make_unique<flacCodec>((flacSettings*)settings, store);
+        break;
+    case codecSettings::MP3:
+        return std::make_unique<mp3Codec>((mp3Settings*)settings, store);
+        break;
+    default:
+        return nullptr;
+    }
+}
+

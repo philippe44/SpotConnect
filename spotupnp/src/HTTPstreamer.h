@@ -61,6 +61,7 @@ private:
     uint16_t port;
     HTTPheaders headers;
     int64_t contentLength = HTTP_CL_NONE;
+    uint64_t totalSent = 0, totalReceived = 0;
     std::unique_ptr<baseCodec> encoder;
     ringBuffer cache;
     size_t useCache;

@@ -102,17 +102,18 @@ HTTPstreamer::HTTPstreamer(struct in_addr addr, std::string id, unsigned index, 
     this->offset = startOffset;
 
     if (codec.find("pcm") != std::string::npos) {
-        encoder = std::make_unique<pcmCodec>();
+        encoder = createCodec(codecSettings::PCM);
     } else if (codec.find("wav") != std::string::npos) {
-        encoder = std::make_unique<wavCodec>();
+        codecSettings settings;
+        encoder = createCodec(codecSettings::WAV);
     } else if (codec.find("flac") != std::string::npos || codec.find("flc") != std::string::npos) {
-        int level = 5;
-        sscanf(codec.c_str(), "%*[^:]:%d", &level);
-        encoder = std::make_unique<flacCodec>(level);
+        flacSettings settings;
+        (void) !sscanf(codec.c_str(), "%*[^:]:%d", &settings.level);
+        encoder = createCodec(codecSettings::FLAC, &settings);
     } else if (codec.find("mp3") != std::string::npos) {
-        int rate = 160;
-        sscanf(codec.c_str(), "%*[^:]:%d", &rate);
-        encoder = std::make_unique<mp3Codec>(rate);
+        mp3Settings settings;
+        (void) !sscanf(codec.c_str(), "%*[^:]:%d", &settings.bitrate);
+        encoder = createCodec(codecSettings::MP3, &settings);
     } else abort();
 
     // now estimate the content-length
@@ -349,6 +350,7 @@ ssize_t HTTPstreamer::sendChunk(int sock, uint8_t* data, ssize_t size) {
         send(sock, "\r\n", 2, 0);
     }
 
+    totalSent += size;
     return size;
 }
 
@@ -433,7 +435,12 @@ ssize_t HTTPstreamer::streamBody(int sock, struct timeval& timeout) {
 }
 
 bool HTTPstreamer::feedPCMFrames(const uint8_t* data, size_t size) {
-    return (isRunning && encoder->pcmWrite(data, size)) ? true : false;
+    if (isRunning && encoder->pcmWrite(data, size)) {
+        totalReceived += size;
+        return true;
+    } else {
+        return false;
+    }
 }
 
 std::string HTTPstreamer::getStreamUrl(void) {
@@ -489,7 +496,7 @@ void HTTPstreamer::runTask() {
 
         // state is tested twice because streamBody is a call that needs to be made
         if (state >= STREAMING && ((n = streamBody(sock, timeout)) == 0) && state == DRAINING) {
-            CSPOT_LOG(info, "HTTP streaming finished for %d (id: %s)", sock, streamId.c_str());
+            CSPOT_LOG(info, "HTTP finished %" PRIu64 "/%" PRIu64 " bytes for %d (id: % s)", totalReceived, totalSent, sock, streamId.c_str());
             // chunked-encoding terminates by a last empty chunk ending sequence
             if (contentLength == HTTP_CL_CHUNKED) send(sock, "0\r\n\r\n", 5, 0);
             flush();

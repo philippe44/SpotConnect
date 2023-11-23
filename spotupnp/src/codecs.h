@@ -31,6 +31,23 @@ public:
     void unlock(void) { mutex.unlock(); }
 };
 
+class codecSettings {
+public:
+    typedef enum {PCM, WAV, MP3, FLAC} type;
+    uint32_t rate = 44100;
+    uint8_t channels = 2, size = 2;
+};
+
+class mp3Settings : public codecSettings {
+public:
+    int bitrate = 160;
+};
+
+class flacSettings : public codecSettings {
+public:
+    int level = 5;
+};
+
 /* 
  Note that the whole implementation assumes that every buffer of samples contains 
  a set of full frames (i.e. a multiply of 16 bits L+R = 4 bytes
@@ -38,20 +55,18 @@ public:
 class baseCodec {
 private:
     static uint32_t index;
+    codecSettings* settings;
 
 protected:
     std::shared_ptr<byteBuffer> pcm, encoded;
     int total = 0;
-    uint32_t rate = 44100;
-    uint8_t channels = 2, size = 2;
 
 public:
     std::string mimeType;
 
-    baseCodec(std::string mimeType, bool store = false);
+    baseCodec(codecSettings *settings, std::string mimeType, bool store = false);
     virtual ~baseCodec(void) { }
-    virtual int getBitrate(void) { return rate * channels * size * 8; }
-    virtual void pcmParam(uint32_t rate, uint8_t channels = 2, uint8_t size = 2) { rate = rate; channels = channels; size = size; }
+    virtual int getBitrate(void) { return settings->rate * settings->channels * settings->size * 8; }
     virtual bool pcmWrite(const uint8_t* data, size_t size) { return pcm->write(data, size); }
     void unlock(void) { encoded->unlock(); }
     bool isEmpty(void) { return encoded->used(); }
@@ -62,51 +77,4 @@ public:
     virtual void drain(void) { }
 };
 
-class pcmCodec : public::baseCodec {
-public:
-    pcmCodec(bool store = false) : baseCodec("audio/L16;rate=44100;channels=2", store) { }
-    virtual void pcmParam(uint32_t rate, uint8_t channels = 2, uint8_t size = 2);
-    virtual uint64_t initialize(int64_t duration);
-    virtual size_t read(uint8_t* dst, size_t size, size_t min);
-    virtual uint8_t* readInner(size_t& size);
-};
-
-class wavCodec : public::baseCodec {
-private:
-    size_t position = 0;
-
-public:
-    wavCodec(bool store = false) : baseCodec("audio/wav", store) {  }
-    virtual uint64_t initialize(int64_t duration);
-};
-
-class flacCodec : public::baseCodec {
-private:
-    void* flac = NULL;
-    int level;
-    bool drained = false;
-
-public:
-    flacCodec(int level = 5, bool store = false) : baseCodec("audio/flac", store), level(level) { }
-    virtual ~flacCodec(void);
-    virtual int getBitrate(void) { return baseCodec::getBitrate() * 0.7; }
-    virtual uint64_t initialize(int64_t duration);
-    virtual bool pcmWrite(const uint8_t* data, size_t size);
-    virtual void drain(void);
- };
-
-class mp3Codec : public::baseCodec {
-private:
-    void* mp3 = NULL;
-    bool drained = false;
-    int blockSize, bitrate;
-    int16_t* scratch;
-
-public:
-    mp3Codec(int bitrate = 160, bool store = false);
-    virtual ~mp3Codec(void);
-    virtual int getBitrate(void) { return bitrate * 1000; }
-    virtual uint64_t initialize(int64_t duration);
-    virtual bool pcmWrite(const uint8_t* data, size_t size);
-    virtual void drain(void);
-};
+std::unique_ptr<baseCodec> createCodec(codecSettings::type type, codecSettings *settings = NULL, bool store = false);

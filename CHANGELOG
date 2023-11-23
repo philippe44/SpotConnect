@@ -1,3 +1,7 @@
+0.5.1
+ - fix queue multiple insertion
+ - update libraop
+
 0.5.0
  - (spotraop) add player (airplay) password management
  - (spotupnp) better estimated birate
