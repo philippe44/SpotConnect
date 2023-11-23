@@ -61,7 +61,6 @@ private:
     uint16_t port;
     HTTPheaders headers;
     int64_t contentLength = HTTP_CL_NONE;
-    uint64_t totalSent = 0, totalReceived = 0;
     std::unique_ptr<baseCodec> encoder;
     ringBuffer cache;
     size_t useCache;
@@ -88,6 +87,7 @@ public:
     std::string trackUnique;
     int64_t offset;
     inline static uint16_t portBase = 0, portRange = 1;
+    uint64_t totalIn = 0, totalOut = 0;
 
     HTTPstreamer(struct in_addr addr, std::string id, unsigned index, std::string codec, 
                  bool flow, int64_t contentLength, 

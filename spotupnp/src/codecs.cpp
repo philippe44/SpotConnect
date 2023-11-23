@@ -351,7 +351,7 @@ private:
     mp3Settings settings;
     int16_t* scratch;
 
-    void process(void);
+    void process(size_t bytes);
 
 public:
     mp3Codec(mp3Settings *settings, bool store = false);
@@ -416,23 +416,26 @@ uint64_t mp3Codec::initialize(int64_t duration) {
     return 0;
 }
 
-void mp3Codec::process(void) {
+void mp3Codec::process(size_t bytes) {
     auto space = std::max(blockSize, 16384);
-    while (encoded->space() >= space && pcm->used() > blockSize) {
-        int len;
+    int len;
+    while (encoded->space() >= space && pcm->used() > blockSize && (ssize_t) bytes > 0) {
         pcm->read((uint8_t*)scratch, blockSize);
         uint8_t* coded = shine_encode_buffer_interleaved((shine_t)mp3, scratch, &len);
         encoded->write(coded, len);
+        bytes -= len;
     }
 }
 
 size_t mp3Codec::read(uint8_t* dst, size_t size, size_t min, bool drain) { 
-    process();
+    // we want to encode more than required but not too much to leave some CPU
+    process(size * 2);
     return baseCodec::read(dst, size, min, drain); 
 }
 
 uint8_t* mp3Codec::readInner(size_t& size, bool drain) { 
-    process();
+    // we want to encode more than required but not too much to leave some CPU
+    process(size * 2);
     return baseCodec::readInner(size, drain); 
 }
 

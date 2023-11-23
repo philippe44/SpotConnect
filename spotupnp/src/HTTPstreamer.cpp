@@ -350,7 +350,7 @@ ssize_t HTTPstreamer::sendChunk(int sock, uint8_t* data, ssize_t size) {
         send(sock, "\r\n", 2, 0);
     }
 
-    totalSent += size;
+    totalOut += size;
     return size;
 }
 
@@ -365,7 +365,7 @@ ssize_t HTTPstreamer::streamBody(int sock, struct timeval& timeout) {
 
     // not using cache or empty cache, get fresh data from encoder
     if (!size) {
-        size = encoder->read(scratch, sizeof(scratch), state == DRAINING);
+        size = encoder->read(scratch, sizeof(scratch), 0, state == DRAINING);
         // cache what we have anyways
         cache.write(scratch, size);
     }
@@ -429,7 +429,7 @@ ssize_t HTTPstreamer::streamBody(int sock, struct timeval& timeout) {
 
 bool HTTPstreamer::feedPCMFrames(const uint8_t* data, size_t size) {
     if (isRunning && encoder->pcmWrite(data, size)) {
-        totalReceived += size;
+        totalIn += size;
         return true;
     } else {
         return false;
@@ -489,7 +489,7 @@ void HTTPstreamer::runTask() {
 
         // state is tested twice because streamBody is a call that needs to be made
         if (state >= STREAMING && ((n = streamBody(sock, timeout)) == 0) && state == DRAINING) {
-            CSPOT_LOG(info, "HTTP finished %" PRIu64 "/%" PRIu64 " bytes for %d (id: % s)", totalReceived, totalSent, sock, streamId.c_str());
+            CSPOT_LOG(info, "HTTP finished in:%" PRIu64 " out:%" PRIu64 " for %d (id: % s)", totalIn, totalOut, sock, streamId.c_str());
             // chunked-encoding terminates by a last empty chunk ending sequence
             if (contentLength == HTTP_CL_CHUNKED) send(sock, "0\r\n\r\n", 5, 0);
             flush();
