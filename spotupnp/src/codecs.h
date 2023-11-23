@@ -72,8 +72,8 @@ public:
     bool isEmpty(void) { return encoded->used(); }
     virtual void flush(void) { total = 0;  pcm->flush(); encoded->flush(); }
     virtual uint64_t initialize(int64_t duration) = 0;
-    virtual size_t read(uint8_t* dst, size_t size, size_t min = 0) { return encoded->read(dst, size, min); }
-    virtual uint8_t* readInner(size_t& size) { return encoded->readInner(size); }
+    virtual size_t read(uint8_t* dst, size_t size, size_t min = 0, bool drain = false);
+    virtual uint8_t* readInner(size_t& size, bool drain = false);
     virtual void drain(void) { }
 };
 

@@ -365,14 +365,7 @@ ssize_t HTTPstreamer::streamBody(int sock, struct timeval& timeout) {
 
     // not using cache or empty cache, get fresh data from encoder
     if (!size) {
-        size = encoder->read(scratch, sizeof(scratch));
-
-        // nothing from encoder, try to drain if we should
-        if (!size && state == DRAINING) {
-            encoder->drain();
-            size = encoder->read(scratch, sizeof(scratch));
-        }
-
+        size = encoder->read(scratch, sizeof(scratch), state == DRAINING);
         // cache what we have anyways
         cache.write(scratch, size);
     }

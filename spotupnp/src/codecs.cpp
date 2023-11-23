@@ -120,6 +120,26 @@ baseCodec::baseCodec(codecSettings *settings, std::string mimeType, bool store) 
     encoded = pcm;
 }
 
+size_t baseCodec::read(uint8_t* dst, size_t size, size_t min, bool drain) { 
+    size_t bytes = encoded->read(dst, size, min);
+    if (!bytes && drain) {
+        baseCodec::drain();
+        return encoded->read(dst, size, min);
+    } else {
+        return bytes;
+    }
+}
+
+uint8_t* baseCodec::readInner(size_t& size, bool drain) { 
+    uint8_t * data = encoded->readInner(size);
+    if (!data && drain) {
+        baseCodec::drain();
+        return encoded->readInner(size);
+    } else {
+        return data;
+    }
+}
+
 /****************************************************************************************
  * PCM codec
  */
@@ -131,7 +151,7 @@ private:
 public:
     pcmCodec(codecSettings *settings, bool store = false);
     virtual uint64_t initialize(int64_t duration);
-    virtual size_t read(uint8_t* dst, size_t size, size_t min);
+    virtual size_t read(uint8_t* dst, size_t size, size_t min, bool drain);
     virtual uint8_t* readInner(size_t& size);
 };
 
@@ -162,7 +182,7 @@ uint8_t* pcmCodec::readInner(size_t& size) {
     return data;
 }
 
-size_t pcmCodec::read(uint8_t* dst, size_t size, size_t min) {
+size_t pcmCodec::read(uint8_t* dst, size_t size, size_t min, bool drain) {
     size_t bytes = encoded->read(dst, size, min);
 #if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
     // pcm needs byte swapping on little endian CPU
@@ -331,15 +351,15 @@ private:
     mp3Settings settings;
     int16_t* scratch;
 
-    void encode(void);
+    void process(void);
 
 public:
     mp3Codec(mp3Settings *settings, bool store = false);
     virtual ~mp3Codec(void);
     virtual int getBitrate(void) { return settings.bitrate * 1000; }
     virtual uint64_t initialize(int64_t duration);
-    virtual size_t read(uint8_t* dst, size_t size, size_t min = 0);
-    virtual uint8_t* readInner(size_t& size);
+    virtual size_t read(uint8_t* dst, size_t size, size_t min = 0, bool drain = false);
+    virtual uint8_t* readInner(size_t& size, bool drain = false);
     virtual void drain(void);
 };
 
@@ -396,9 +416,8 @@ uint64_t mp3Codec::initialize(int64_t duration) {
     return 0;
 }
 
-void mp3Codec::encode(void) {
+void mp3Codec::process(void) {
     auto space = std::max(blockSize, 16384);
-
     while (encoded->space() >= space && pcm->used() > blockSize) {
         int len;
         pcm->read((uint8_t*)scratch, blockSize);
@@ -407,14 +426,14 @@ void mp3Codec::encode(void) {
     }
 }
 
-size_t mp3Codec::read(uint8_t* dst, size_t size, size_t min) { 
-    encode();
-    return encoded->read(dst, size, min); 
+size_t mp3Codec::read(uint8_t* dst, size_t size, size_t min, bool drain) { 
+    process();
+    return baseCodec::read(dst, size, min, drain); 
 }
 
-uint8_t* mp3Codec::readInner(size_t& size) { 
-    encode();
-    return encoded->readInner(size); 
+uint8_t* mp3Codec::readInner(size_t& size, bool drain) { 
+    process();
+    return baseCodec::readInner(size, drain); 
 }
 
 void mp3Codec::drain(void) {
