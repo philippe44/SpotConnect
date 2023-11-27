@@ -3,7 +3,7 @@ Use these applications to add Spotify Connect capabilities to UPnP (like Sonos) 
 
 SpotConnect can run on any machine that has access to your local network (Windows, MacOS x86 and arm64, Linux x86, x86_64, arm, aarch64, sparc, mips, powerpc, Solaris and FreeBSD). It does not need to be on your main computer. (For example, a Raspberry Pi works well). It will detect UPnP/Sonos or AirPlay players, create as many virtual Spotify Connect devices as needed, and act as a bridge/proxy between Spotify controller (iPhone, iPad, PC, Mac ...) and the real UPnP/Sonos or AirPlay players.
 
-For UPnP, the audio, after being decoded from vorbis, can be sent in plain, or re-encoded using mp3 or flac. The tracks can be sent one-by one and use the capability of UPnP players to do gapless playback by sending the next track ahead of the current one, but not all players support that or might simply be faulty. There is also a 'flow' mode where all tracks are sent in a continuous stream, similar to a webradio. Note that this mode can be brittle with regard to track position. In 'flow' mode, metadata are likely not to be sent, unlesss player supports 'icy' protocol.
+For UPnP, the audio, after being decoded from vorbis, can be sent in plain, or re-encoded using mp3, aac, vorbis, opus or flac. The tracks can be sent one-by one and use the capability of UPnP players to do gapless playback by sending the next track ahead of the current one, but not all players support that or might simply be faulty. There is also a 'flow' mode where all tracks are sent in a continuous stream, similar to a webradio. Note that this mode can be brittle with regard to track position. In 'flow' mode, metadata are likely not to be sent, unlesss player supports 'icy' protocol.
 
 For AirPlay, the audio can be re-encoded using ALAC or left as raw PCM. Note that bridging also works with AppleTV, but you need to create a pairing key. This is done by launching the application with the `-l` option and following instructions. A config file with the required `<raop_credentials>` tag is automatically written to the directory from which the application was launched and will be required for further use. For software-based AirPlay emulators like most cheap knock-off, encryption is required (see below) 
 
@@ -84,7 +84,7 @@ The default configuration file is `config.xml`, stored in the same directory as 
 - `flow`        : enable flow mode
 - `gapless`     : use UPnP gapless mode (if players supports it)
 - `http_content_length`	   : same as `-g` command line parameter
-- `codec mp3[:<bitrate>] | flc[:0..9] | wav | pcm`: format used to send HTTP audio. FLAC is recommended but uses more CPU (pcm only available for UPnP). For example, `mp3:320` for 320Kb/s MP3 encoding.
+- `codec mp3[:<bitrate>]|aac[:<bitrate>]|vorbis[:<bitrate>]|opus[:<bitrate>]|flc[:0..9]|wav|pcm`: format used to send HTTP audio. FLAC is recommended but uses more CPU (pcm only available for UPnP). For example, `mp3:320` for 320Kb/s MP3 encoding.
 
 #### AirPlay
 - `alac_encode <0|1>`: format used to send audio (`0` = PCM, `1` = ALAC)
@@ -231,7 +231,7 @@ The default mode of SpotUPnP is no "content-length" (\<http_content_length\> = -
 This might still not work as some players do not understand that the source is not a randomly accessible (searchable) file and want to get the first(e.g.) 128kB to try to do some smart guess on the length, close the connection, re-open it from the beginning and expect to have the same content. I'm trying to keep a buffer of last recently sent bytes to be able to resend-it, but that does not always works. Normally, players should understand that when they ask for a range and the response is 200 (full content), it *means* the source does not support range request but some don't (I've tried to add a header "accept: no-range but that makes things worse most of the time).
 
 ### UPnP/DLNA ProtocolInfo
-When sending DLNA/UPnP content, there is a special parameter named `ProtocolInfo` that is found in the UPnP command (DIDL-lite header) and can be also explicitly requested by the player during a GET. That field is automatically built but is subject to a lot of intepretations, so it might be helpful to manually define it and you can do that for pcm, wav, flac and mp3 format using the field in the section \<protocol_info\> in your config file.
+When sending DLNA/UPnP content, there is a special parameter named `ProtocolInfo` that is found in the UPnP command (DIDL-lite header) and can be also explicitly requested by the player during a GET. That field is automatically built but is subject to a lot of intepretations, so it might be helpful to manually define it and you can do that for pcm, wav, flac, aac, vorbis, opus and mp3 format using the field in the section \<protocol_info\> in your config file.
 
 There is another part of this filed named DLNA which changes when using the 'flow' mode (sending a single stream) vs sending track by track. The default should work, but UPnP is such a mess that some players do require special versions. You can tweaks these here, search DLNA protocol info for more information.
 
