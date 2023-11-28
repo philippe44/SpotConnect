@@ -101,20 +101,28 @@ HTTPstreamer::HTTPstreamer(struct in_addr addr, std::string id, unsigned index, 
     // for flow mode, start with a negative offset so that we can always substract
     this->offset = startOffset;
 
+    codecSettings settings;
+
     if (codec.find("pcm") != std::string::npos) {
-        encoder = createCodec(codecSettings::PCM);
+        encoder = createCodec(codecSettings::PCM, settings);
     } else if (codec.find("wav") != std::string::npos) {
-        codecSettings settings;
-        encoder = createCodec(codecSettings::WAV);
+        encoder = createCodec(codecSettings::WAV, settings);
     } else if (codec.find("flac") != std::string::npos || codec.find("flc") != std::string::npos) {
-        flacSettings settings;
-        (void) !sscanf(codec.c_str(), "%*[^:]:%d", &settings.level);
-        encoder = createCodec(codecSettings::FLAC, &settings);
+        (void)!sscanf(codec.c_str(), "%*[^:]:%d", &settings.flac.level);
+        encoder = createCodec(codecSettings::FLAC, settings);
+    } else if (codec.find("opus") != std::string::npos) {
+        (void)!sscanf(codec.c_str(), "%*[^:]:%d", &settings.opus.bitrate);
+        encoder = createCodec(codecSettings::OPUS, settings);
+    } else if (codec.find("vorbis") != std::string::npos) {
+        (void)!sscanf(codec.c_str(), "%*[^:]:%d", &settings.vorbis.bitrate);
+        encoder = createCodec(codecSettings::VORBIS, settings);
+    } else if (codec.find("aac") != std::string::npos) {
+        (void)!sscanf(codec.c_str(), "%*[^:]:%d", &settings.aac.bitrate);
+        encoder = createCodec(codecSettings::AAC, settings);
     } else if (codec.find("mp3") != std::string::npos) {
-        mp3Settings settings;
-        (void) !sscanf(codec.c_str(), "%*[^:]:%d", &settings.bitrate);
-        encoder = createCodec(codecSettings::MP3, &settings);
-    } else abort();
+        (void) !sscanf(codec.c_str(), "%*[^:]:%d", &settings.mp3.bitrate);
+        encoder = createCodec(codecSettings::MP3, settings);
+    } else throw std::runtime_error("unknown codec");
 
     // now estimate the content-length
     setContentLength(contentLength);
@@ -149,11 +157,14 @@ HTTPstreamer::~HTTPstreamer() {
 }
 
 void HTTPstreamer::setContentLength(int64_t contentLength) {
-    // a real content-length might be provided by codec (offset is negative)
+    // a real content-length (< 0 means estimated) might be provided by codec (offset is negative)
     uint64_t duration = trackInfo.duration - (-offset);
-    uint64_t length = encoder->initialize(duration);
-    if (contentLength == HTTP_CL_REAL) this->contentLength = length ? length : (duration * encoder->getBitrate() * 1.1) / (8 * 1000);
-    else if (contentLength == HTTP_CL_KNOWN) this->contentLength = length ? length : HTTP_CL_NONE;
+    int64_t length = encoder->initialize(duration);
+
+    if (!length) throw std::runtime_error("can't initialize codec");
+
+    if (contentLength == HTTP_CL_REAL) this->contentLength = abs(length);
+    else if (contentLength == HTTP_CL_KNOWN) this->contentLength = length > 0 ? length : HTTP_CL_NONE;
     else this->contentLength = contentLength;
 }
 

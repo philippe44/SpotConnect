@@ -1,3 +1,7 @@
+0.6.0
+ - add aac, vorbis and opus encoding
+ - update libcodecs
+ 
 0.5.2
  - (spotupnp) refactor codec class and fix mp3 encoding on small CPU platform
  

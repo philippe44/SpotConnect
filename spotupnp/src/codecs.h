@@ -33,19 +33,18 @@ public:
 
 class codecSettings {
 public:
-    typedef enum {PCM, WAV, MP3, FLAC} type;
+    typedef enum { MP3, AAC, VORBIS, OPUS, FLAC, WAV, PCM } type;
     uint32_t rate = 44100;
     uint8_t channels = 2, size = 2;
-};
-
-class mp3Settings : public codecSettings {
-public:
-    int bitrate = 160;
-};
-
-class flacSettings : public codecSettings {
-public:
-    int level = 5;
+    struct {
+      int level = 5;
+    } flac;
+    struct {
+       int bitrate = 0;
+    } opus;
+    struct {
+        int bitrate = 160;
+    } mp3, vorbis, aac;
 };
 
 /* 
@@ -55,26 +54,29 @@ public:
 class baseCodec {
 private:
     static uint32_t index;
-    codecSettings* settings;
 
 protected:
+    codecSettings settings;
+    static size_t minSpace;
+    uint32_t pcmBitrate;
     std::shared_ptr<byteBuffer> pcm, encoded;
     int total = 0;
+
+    virtual void process(size_t bytes) { }
 
 public:
     std::string mimeType;
 
-    baseCodec(codecSettings *settings, std::string mimeType, bool store = false);
+    baseCodec(codecSettings settings, std::string mimeType, bool store = false);
     virtual ~baseCodec(void) { }
-    virtual int getBitrate(void) { return settings->rate * settings->channels * settings->size * 8; }
     virtual bool pcmWrite(const uint8_t* data, size_t size) { return pcm->write(data, size); }
     void unlock(void) { encoded->unlock(); }
     bool isEmpty(void) { return encoded->used(); }
     virtual void flush(void) { total = 0;  pcm->flush(); encoded->flush(); }
-    virtual uint64_t initialize(int64_t duration) = 0;
+    virtual int64_t initialize(int64_t duration) = 0;
     virtual size_t read(uint8_t* dst, size_t size, size_t min = 0, bool drain = false);
     virtual uint8_t* readInner(size_t& size, bool drain = false);
     virtual void drain(void) { }
 };
 
-std::unique_ptr<baseCodec> createCodec(codecSettings::type type, codecSettings *settings = NULL, bool store = false);
+std::unique_ptr<baseCodec> createCodec(codecSettings::type codec, codecSettings settings, bool store = false);

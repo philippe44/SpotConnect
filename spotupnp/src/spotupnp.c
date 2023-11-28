@@ -80,6 +80,10 @@ tMRConfig			glMRConfig = {
 								"http-get:*:audio/wav:DLNA.ORG_OP=%s;DLNA.ORG_CI=0;DLNA.ORG_FLAGS=%s",
 								"http-get:*:audio/flac:DLNA.ORG_OP=%s;DLNA.ORG_CI=0;DLNA.ORG_FLAGS=%s",
 								"http-get:*:audio/mpeg:DLNA.ORG_PN=MP3;DLNA.ORG_OP=%s;DLNA.ORG_CI=0;DLNA.ORG_FLAGS=%s",
+								"http-get:*:audio/ogg:DLNA.ORG_PN=opus;DLNA.ORG_OP=%s;DLNA.ORG_CI=0;DLNA.ORG_FLAGS=%s",
+								"http-get:*:audio/ogg:DLNA.ORG_PN=vorbis;DLNA.ORG_OP=%s;DLNA.ORG_CI=0;DLNA.ORG_FLAGS=%s",
+								"http-get:*:audio/aac:DLNA.ORG_PN=AAC_ADTS;DLNA.ORG_OP=%s;DLNA.ORG_CI=0;DLNA.ORG_FLAGS=%s",
+								//"http-get:*:audio/vnd.dlna.adts:DLNA.ORG_PN=AAC_ADTS;DLNA.ORG_OP=%s;DLNA.ORG_CI=0;DLNA.ORG_FLAGS=%s",
 							},
 							{	// DLNA.ORG OP and FLAGS in normal mode
 								"01",
@@ -172,7 +176,7 @@ static char usage[] =
 		   "  -n <m1,m2,...>       exclude devices whose name includes tokens\n"
 		   "  -o <m1,m2,...>       include only listed models; overrides -m and -n (use <NULL> if player don't return a model)\n"
 		   "  -d <log>=<level>     set logging level, logs: all|main|util|upnp, level: error|warn|info|debug|sdebug\n"
-		   "  -c <mp3[:<rate>]|flc[:0..9]|wav|pcm> audio format send to player\n"
+		   "  -c <mp3[:<rate>]|opus[:<rate>]|vorbis[:rate]|flc[:0..9]|wav|pcm> audio format send to player\n"
 
 #if LINUX || FREEBSD
 		   "  -z                   daemonize\n"
@@ -282,13 +286,17 @@ sleep:
 /*----------------------------------------------------------------------------*/
 void SetTrackURI(struct sMR* Device, bool Next, const char * StreamUrl, metadata_t* MetaData) {
 	char* url, * mp3Radio = "";
+	int PrefixLength = 0;
 
-	if (strcasestr(Device->Config.Codec, "mp3") && *Device->Service[TOPOLOGY_IDX].ControlURL && Device->Config.Flow) {
+	if ((strcasestr(Device->Config.Codec, "mp3") || strcasestr(Device->Config.Codec, "aac")) && *Device->Service[TOPOLOGY_IDX].ControlURL && Device->Config.Flow) {
+		//if (strcasestr(Device->Config.Codec, "aac")) mp3Radio = "aac://x-rincon-mp3radio://";
 		mp3Radio = "x-rincon-mp3radio://";
+		if (strcasestr(Device->Config.Codec, "aac")) PrefixLength = strlen("aac://");
+		else PrefixLength = strlen(mp3Radio);
 		LOG_INFO("[%p]: Sonos live stream", Device);
 	}
 
-	Device->PrefixLength = strlen(mp3Radio);
+	Device->PrefixLength = PrefixLength;
 	(void) !asprintf(&url, "%s%s", mp3Radio, StreamUrl);
 
 	if (Next) AVTSetNextURI(Device, url, MetaData, Device->ProtocolInfo);
@@ -1152,6 +1160,9 @@ static bool AddMRDevice(struct sMR* Device, char* UDN, IXML_Document* DescDoc, c
 	if (!strcasecmp(Device->Config.Codec, "pcm")) ProtocolInfo = Device->Config.ProtocolInfo.pcm;
 	else if (!strcasecmp(Device->Config.Codec, "wav")) ProtocolInfo = Device->Config.ProtocolInfo.wav;
 	else if (strcasestr(Device->Config.Codec, "mp3")) ProtocolInfo = Device->Config.ProtocolInfo.mp3;
+	else if (strcasestr(Device->Config.Codec, "opus")) ProtocolInfo = Device->Config.ProtocolInfo.opus;
+	else if (strcasestr(Device->Config.Codec, "vorbis")) ProtocolInfo = Device->Config.ProtocolInfo.vorbis;
+	else if (strcasestr(Device->Config.Codec, "aac")) ProtocolInfo = Device->Config.ProtocolInfo.aac;
 	else ProtocolInfo = Device->Config.ProtocolInfo.flac;
 
 	sprintf(Device->ProtocolInfo, ProtocolInfo,

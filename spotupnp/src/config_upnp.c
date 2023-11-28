@@ -74,7 +74,10 @@ void SaveConfig(char *name, void *ref, bool full) {
 	XMLUpdateNode(doc, proto, false, "pcm", "%s", glMRConfig.ProtocolInfo.pcm);
 	XMLUpdateNode(doc, proto, false, "wav", "%s", glMRConfig.ProtocolInfo.wav);
 	XMLUpdateNode(doc, proto, false, "flac", "%s", glMRConfig.ProtocolInfo.flac);
+	XMLUpdateNode(doc, proto, false, "aac", "%s", glMRConfig.ProtocolInfo.aac);
 	XMLUpdateNode(doc, proto, false, "mp3", "%s", glMRConfig.ProtocolInfo.mp3);
+	XMLUpdateNode(doc, proto, false, "opus", "%s", glMRConfig.ProtocolInfo.opus);
+	XMLUpdateNode(doc, proto, false, "vorbis", "%s", glMRConfig.ProtocolInfo.vorbis);
 
 	XMLUpdateNode(doc, proto, false, "DLNA_OP", glMRConfig.DLNA.op);
 	XMLUpdateNode(doc, proto, false, "DLNA_FLAGS", glMRConfig.DLNA.flags);
@@ -155,7 +158,10 @@ static void LoadConfigItem(tMRConfig *Conf, char *name, char *val) {
 	if (!strcmp(name, "pcm")) strcpy(Conf->ProtocolInfo.pcm, val);
 	if (!strcmp(name, "wav")) strcpy(Conf->ProtocolInfo.wav, val);
 	if (!strcmp(name, "flac")) strcpy(Conf->ProtocolInfo.flac, val);
+	if (!strcmp(name, "aac")) strcpy(Conf->ProtocolInfo.aac, val);
 	if (!strcmp(name, "mp3")) strcpy(Conf->ProtocolInfo.mp3, val);
+	if (!strcmp(name, "vorbis")) strcpy(Conf->ProtocolInfo.vorbis, val);
+	if (!strcmp(name, "opus")) strcpy(Conf->ProtocolInfo.opus, val);
 
 	if (!strcmp(name, "DLNA_OP")) strcpy(Conf->DLNA.op, val);
 	if (!strcmp(name, "DLNA_FLAGS")) strcpy(Conf->DLNA.flags, val);
