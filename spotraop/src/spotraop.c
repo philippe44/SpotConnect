@@ -44,7 +44,7 @@
 #include "metadata.h"
 #include "spotify.h"
 
-#define FRAMES_PER_BLOCK 352
+#define FRAMES_PER_BLOCK DEFAULT_FRAMES_PER_CHUNK
 #define DISCOVERY_TIME	 60
 
 enum { VOLUME_IGNORE = 0, VOLUME_SOFT = 1, VOLUME_HARD = 2};
@@ -237,7 +237,7 @@ void shadowRequest(struct shadowPlayer* shadow, enum spotEvent event, ...) {
 		// store credentials in dedicated file
 		if (*glCredentialsPath) {
 			char* name;
-			asprintf(&name, "%s/spotraop-%08x.json", glCredentialsPath, hash32(Device->UDN));
+			(void) !asprintf(&name, "%s/spotraop-%08x.json", glCredentialsPath, hash32(Device->UDN));
 			FILE* file = fopen(name, "w");
 			free(name);
 			if (file) {
@@ -295,6 +295,7 @@ void shadowRequest(struct shadowPlayer* shadow, enum spotEvent event, ...) {
 
 			pthread_t lambda;
 			pthread_create(&lambda, NULL, &GetArtworkThread, Artwork);
+			pthread_detach(lambda);
 		}
 
 		break;
@@ -547,11 +548,11 @@ static bool AddRaopDevice(struct sMR *Device, mdnssd_service_t *s) {
 	// or from separated credential file (has precedence)
 	if (*glCredentialsPath) {
 		char* name;
-		asprintf(&name, "%s/spotraop-%08x.json", glCredentialsPath, hash32(Device->UDN));
+		(void) !asprintf(&name, "%s/spotraop-%08x.json", glCredentialsPath, hash32(Device->UDN));
 		FILE* file = fopen(name, "r");
 		free(name);
 		if (file) {
-			fgets(Device->Credentials, sizeof(Device->Credentials), file);
+			(void) !fgets(Device->Credentials, sizeof(Device->Credentials), file);
 			fclose(file);
 		}
 	}
@@ -600,7 +601,7 @@ static bool AddRaopDevice(struct sMR *Device, mdnssd_service_t *s) {
 		char* encrypted;
 
 		// add up to 2 trailing '=' and adjust size
-		asprintf(&encrypted, "%s==", Device->Config.Password);
+		(void) !asprintf(&encrypted, "%s==", Device->Config.Password);
 		encrypted[strlen(Device->Config.Password) + strlen(Device->Config.Password) % 4] = '\0';
 		password = malloc(strlen(encrypted));
 		size_t len = base64_decode(encrypted, password);
@@ -652,7 +653,7 @@ static void DelRaopDevice(struct sMR *Device) {
 	pthread_mutex_lock(&Device->Mutex);
 	Device->Running = false;
 	pthread_mutex_unlock(&Device->Mutex);
-	// there is no thread to join here...
+	spotDeletePlayer(Device->SpotPlayer);
 	raopcl_destroy(Device->Raop);
 
 	LOG_INFO("[%p]: Raop device stopped (%s)", Device, Device->FriendlyName);
@@ -998,11 +999,11 @@ static bool Stop(void) {
 	mdnssd_close(glmDNSsearchHandle);
 	pthread_join(glmDNSsearchThread, NULL);
 
-	// can now finish all cspot instances
-	spotClose();
-
 	LOG_INFO("flush renderers ...", NULL);
 	FlushRaopDevices();
+
+	// can now finish all cspot instances
+	spotClose();
 
 	// Stop ActiveRemote server
 	LOG_INFO("terminate mDNS responder", NULL);
@@ -1376,9 +1377,7 @@ int main(int argc, char *argv[])
 		}
 	}
 
-	LOG_INFO("stopping cspot devices ...", NULL);
-	spotClose();
-	LOG_INFO("stopping raop devices ...", NULL);
+	LOG_INFO("stopping devices ...", NULL);
 	Stop();
 	LOG_INFO("all done", NULL);
 	return true;

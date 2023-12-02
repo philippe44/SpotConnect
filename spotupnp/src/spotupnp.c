@@ -285,22 +285,19 @@ sleep:
 
 /*----------------------------------------------------------------------------*/
 void SetTrackURI(struct sMR* Device, bool Next, const char * StreamUrl, metadata_t* MetaData) {
-	char* url, * mp3Radio = "";
-	int PrefixLength = 0;
+	char* url;
 
-	if ((strcasestr(Device->Config.Codec, "mp3") || strcasestr(Device->Config.Codec, "aac")) && *Device->Service[TOPOLOGY_IDX].ControlURL && Device->Config.Flow) {
-		//if (strcasestr(Device->Config.Codec, "aac")) mp3Radio = "aac://x-rincon-mp3radio://";
-		mp3Radio = "x-rincon-mp3radio://";
-		if (strcasestr(Device->Config.Codec, "aac")) PrefixLength = strlen("aac://");
-		else PrefixLength = strlen(mp3Radio);
+	if ((strcasestr(Device->Config.Codec, "mp3") || strcasestr(Device->Config.Codec, "aac")) && 
+		*Device->Service[TOPOLOGY_IDX].ControlURL && Device->Config.Flow) {
+		(void)!asprintf(&url, "x-rincon-mp3radio://%s", StreamUrl);
 		LOG_INFO("[%p]: Sonos live stream", Device);
+	} else {
+		url = strdup(StreamUrl);
 	}
-
-	Device->PrefixLength = PrefixLength;
-	(void) !asprintf(&url, "%s%s", mp3Radio, StreamUrl);
 
 	if (Next) AVTSetNextURI(Device, url, MetaData, Device->ProtocolInfo);
 	else AVTSetURI(Device, url, MetaData, Device->ProtocolInfo);
+	LOG_INFO("[%p]: set URI %s", Device, url);
 
 	free(url);
 }
@@ -326,7 +323,7 @@ void shadowRequest(struct shadowPlayer *shadow, enum spotEvent event, ...) {
 		// store credentials in dedicated file
 		if (*glCredentialsPath) {
 			char* name;
-			asprintf(&name, "%s/spotupnp-%08x.json", glCredentialsPath, hash32(Device->UDN));
+			(void) !asprintf(&name, "%s/spotupnp-%08x.json", glCredentialsPath, hash32(Device->UDN));
 			FILE* file = fopen(name, "w");
 			free(name);
 			if (file) {
@@ -657,7 +654,8 @@ int ActionHandler(Upnp_EventType EventType, const void *Event, void *Cookie) {
 							p->TrackURI[sizeof(p->TrackURI) - 1] = '\0';
 							p->ElapsedOffset = 0;
 						}
-						spotNotify(p->SpotPlayer, SHADOW_TRACK, r + p->PrefixLength);
+						//spotNotify(p->SpotPlayer, SHADOW_TRACK, r + p->PrefixLength);
+						spotNotify(p->SpotPlayer, SHADOW_TRACK, r);
 						free(r);
 					}
 				}
@@ -750,8 +748,8 @@ int MasterHandler(Upnp_EventType EventType, const void *_Event, void *Cookie) {
 			// if there is a cookie, it's a targeted Sonos search
 			if (!Cookie) {
 				static int Version;
-				char SearchTopic[sizeof(MEDIA_RENDERER)+2];
-				snprintf(SearchTopic, sizeof(SearchTopic), "%s:%i", MEDIA_RENDERER, (Version++ % glMRConfig.UPnPMax) + 1);
+				char SearchTopic[sizeof(MEDIA_RENDERER) + 3];
+				snprintf(SearchTopic, sizeof(SearchTopic), "%s:%i", MEDIA_RENDERER, ((Version++ % glMRConfig.UPnPMax) % 10) + 1);
 				UpnpSearchAsync(glControlPointHandle, DISCOVERY_TIME, SearchTopic, NULL);
 			}
 
@@ -1097,11 +1095,11 @@ static bool AddMRDevice(struct sMR* Device, char* UDN, IXML_Document* DescDoc, c
 	// or from separated credential file (has precedence)
 	if (*glCredentialsPath) {
 		char* name;
-		asprintf(&name, "%s/spotupnp-%08x.json", glCredentialsPath, hash32(Device->UDN));
+		(void) !asprintf(&name, "%s/spotupnp-%08x.json", glCredentialsPath, hash32(Device->UDN));
 		FILE* file = fopen(name, "r");
 		free(name);
 		if (file) {
-			fgets(Device->Credentials, sizeof(Device->Credentials), file);
+			(void) !fgets(Device->Credentials, sizeof(Device->Credentials), file);
 			fclose(file);
 		}
 	}
@@ -1308,8 +1306,8 @@ static bool Start(bool cold) {
 	}
 
 	for (int i = 0; i < glMRConfig.UPnPMax; i++) {
-		char SearchTopic[sizeof(MEDIA_RENDERER)+2];
-		snprintf(SearchTopic, sizeof(SearchTopic), "%s:%i", MEDIA_RENDERER, i + 1);
+		char SearchTopic[sizeof(MEDIA_RENDERER) + 3];
+		snprintf(SearchTopic, sizeof(SearchTopic), "%s:%i", MEDIA_RENDERER, (i % 10) + 1);
 		UpnpSearchAsync(glControlPointHandle, DISCOVERY_TIME, SearchTopic, NULL);
 	}
 
@@ -1317,6 +1315,7 @@ static bool Start(bool cold) {
 
 Error:
 	UpnpFinish();
+	NFREE(glMRDevices);
 	return false;
 
 }
@@ -1331,12 +1330,12 @@ static bool Stop(bool exit) {
 		pthread_cond_signal(&glUpdateCond);
 		pthread_join(glUpdateThread, NULL);
 
-		// can now finish all cspot instances
-		spotClose();
-
 		// remove devices and make sure that they are stopped to avoid libupnp lock
 		LOG_INFO("flush renderers ...", NULL);
 		FlushMRDevices();
+
+		// can now finish all cspot instances
+		spotClose();
 
 		LOG_INFO("terminate libupnp", NULL);
 		UpnpUnRegisterClient(glControlPointHandle);
@@ -1365,6 +1364,7 @@ static bool Stop(bool exit) {
 		netsock_close();
 	}
 
+	free(glMRDevices);
 	return true;
 }
 
@@ -1554,7 +1554,7 @@ int main(int argc, char *argv[]) {
 		}
 	}
 
-	LOG_WARN("Starting stopupnp version: %s", VERSION);
+	LOG_WARN("Starting spotupnp version: %s", VERSION);
 
 	if (strtod("0.30", NULL) != 0.30) {
 		LOG_WARN("weird GLIBC, try -static build in case of failure");

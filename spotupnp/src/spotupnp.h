@@ -21,7 +21,7 @@
 #include "metadata.h"
 #include "spotify.h"
 
-#define VERSION "v0.6.0"" ("__DATE__" @ "__TIME__")"
+#define VERSION "v0.6.1"" ("__DATE__" @ "__TIME__")"
 
 /*----------------------------------------------------------------------------*/
 /* typedefs */
@@ -112,7 +112,6 @@ struct sMR {
 	bool			Gapless;
 	char			TrackURI[STR_LEN];
 	char*			NextStreamUrl;
-	int				PrefixLength;
 };
 
 extern UpnpClient_Handle   	glControlPointHandle;

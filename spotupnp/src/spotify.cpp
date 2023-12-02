@@ -39,7 +39,7 @@ extern "C" {
 #include "codecs.h"
 
 /****************************************************************************************
- * Encapsulate pthread mutexes into basic_locable
+ * Encapsulate pthread mutexes into basic_lockable
  */
 class shadowMutex {
 private:
@@ -150,6 +150,9 @@ CSpotPlayer::~CSpotPlayer() {
 
     // manually unregister mDNS but all other item should be deleted automatically
     if (mdnsService) mdnsService->unregisterService();
+
+    // cleanup HTTP server
+    if (server) server->close();
 
     // then just wait
     std::scoped_lock lock(this->runningMutex);
@@ -458,13 +461,13 @@ void notify(CSpotPlayer *self, enum shadowEvent event, va_list args) {
         break;
     }
     case SHADOW_TRACK: {
-        char* url = va_arg(args, char*);
+        auto url = std::string(va_arg(args, char*));
 
         // nothing to do if we are already the active player
-        if (self->streamers.empty() || (self->player && self->player->getStreamUrl() == url)) return;    
+        if (self->streamers.empty() || (self->player && url.find(self->player->getStreamUrl()) != std::string::npos)) return;    
 
         // remove previous streamers till we reach new url (should be only one)
-        while (self->streamers.back()->getStreamUrl() != url) {
+        while (url.find(self->streamers.back()->getStreamUrl()) == std::string::npos) {
             self->streamers.pop_back();
             // we should NEVER be here
             if (self->streamers.empty()) return;
@@ -535,13 +538,22 @@ HTTPheaders CSpotPlayer::onHeaders(HTTPheaders request) {
         req = item;
     }
 
-    if (req) for (auto resp = shadowHeaders(shadow, req); resp;) {
-        response[resp->key] = resp->value;
-        free(resp->key);
-        free(resp->value);
-        auto item = resp;
-        resp = resp->next;
-        free(item);
+    if (req) {
+        // see if parent wants to add headers in response
+        for (auto resp = shadowHeaders(shadow, req); resp;) {
+            response[resp->key] = resp->value;
+            free(resp->key);
+            free(resp->value);
+            auto item = resp;
+            resp = resp->next;
+            free(item);
+        }
+        // free the C header structure
+        do {
+            auto item = req;
+            req = req->next;
+            delete item;
+        } while (req);
      }
    
     return response;
@@ -647,7 +659,6 @@ void CSpotPlayer::runTask() {
             if (!zeroConf) enableZeroConf();
             zeroConf = true;
         }
-        int toto = isRunning;
     }
 
     CSPOT_LOG(info, "terminating player <%s>", name.c_str());
@@ -669,6 +680,7 @@ void spotOpen(uint16_t portBase, uint16_t portRange, char *username, char* passw
 }
 
 void spotClose(void) {
+    delete bell::bellGlobalLogger;
 }
 
 struct spotPlayer* spotCreatePlayer(char* name, char *id, char * credentials, struct in_addr addr, int oggRate, 

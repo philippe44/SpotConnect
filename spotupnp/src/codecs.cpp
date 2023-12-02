@@ -118,9 +118,7 @@ baseCodec::baseCodec(codecSettings settings, std::string mimeType, bool store) :
     if (settings.size != 2 || settings.channels != 2) throw std::out_of_range("codec only accepts stereo 16 bits samples");
  
     if (store) {
-        char type[5] = { 0 };
-        (void)!sscanf(mimeType.c_str(), "audio/%4[^;]", type);
-        auto name = "./stream-" + std::to_string(index++) + "." + type;
+        auto name = "./stream-" + std::to_string(index++) + "." + id();
         storage = fopen(name.c_str(), "wb");
     }
 
@@ -153,6 +151,13 @@ uint8_t* baseCodec::readInner(size_t& size, bool drain) {
     } else {
         return data;
     }
+}
+
+std::string baseCodec::id(void) {
+    auto search = std::string("audio/");
+    size_t pos = mimeType.find(search);
+    if (pos != std::string::npos) return mimeType.substr(pos + search.size());
+    return std::string();
 }
 
 /****************************************************************************************
@@ -350,10 +355,11 @@ private:
     uint8_t* inBuf = NULL, * outBuf = NULL;
 
     void process(size_t bytes);
+    void cleanup(void);
 
 public:
     aacCodec(codecSettings settings, bool store = false);
-    virtual ~aacCodec(void);
+    virtual ~aacCodec(void) { cleanup(); }
     virtual int64_t initialize(int64_t duration);
     virtual void drain(void);
 };
@@ -363,7 +369,7 @@ aacCodec::aacCodec(codecSettings settings, bool store) : baseCodec(settings, "au
     pcm = std::make_shared<byteBuffer>();
 }
 
-aacCodec::~aacCodec(void) {
+void aacCodec::cleanup(void) {
     if (aac) {
         faacEncClose(aac);
         delete[] inBuf;
@@ -373,7 +379,7 @@ aacCodec::~aacCodec(void) {
 
 int64_t aacCodec::initialize(int64_t duration) {
     // clean any current decoder 
-    if (aac) faacEncClose(aac);
+    cleanup();
     drained = false;
 
     // in case of failure, return 0
@@ -424,12 +430,14 @@ private:
     int16_t* scratch;
 
     void process(size_t bytes);
+    void cleanup();
 
 public:
     mp3Codec(codecSettings settings, bool store = false);
-    virtual ~mp3Codec(void);
+    virtual ~mp3Codec(void) { cleanup(); }
     virtual int64_t initialize(int64_t duration);
     virtual void drain(void);
+    virtual std::string id() { return std::string("mp3"); }
 };
 
 mp3Codec::mp3Codec(codecSettings settings, bool store) : baseCodec(settings, "audio/mpeg", store) {
@@ -437,9 +445,11 @@ mp3Codec::mp3Codec(codecSettings settings, bool store) : baseCodec(settings, "au
     pcm = std::make_shared<byteBuffer>();
 }
 
-mp3Codec::~mp3Codec(void) {
-    if (mp3) shine_close(mp3);
-    delete scratch;
+void mp3Codec::cleanup(void) {
+    if (mp3) {
+        shine_close(mp3);
+        delete[] scratch;
+    }
 }
 
 int64_t mp3Codec::initialize(int64_t duration) {
@@ -461,13 +471,12 @@ int64_t mp3Codec::initialize(int64_t duration) {
             "SpotConnect",
     };
 
-    // write header with no modification, just so that player thinks it's a file
-    // @TODO: why does this not work?
-    encoded->write((uint8_t*)&header, sizeof(header));
-
     // clean any current decoder 
-    if (mp3) shine_close(mp3);
+    cleanup();
     drained = false;
+
+    // write header with no modification, just so that player thinks it's a file
+    encoded->write((uint8_t*)&header, sizeof(header));
 
     // create a new encoder    
     shine_config_t config;
@@ -521,6 +530,7 @@ public:
     virtual int64_t initialize(int64_t duration);
     virtual bool pcmWrite(const uint8_t* data, size_t size);
     virtual void drain(void);
+    virtual std::string id() { return std::string("ops"); }
 };
 
 opusCodec::~opusCodec(void) {
@@ -590,6 +600,7 @@ public:
     virtual ~vorbisCodec(void) { cleanup(); }
     virtual int64_t initialize(int64_t duration);
     virtual void drain(void);
+    virtual std::string id() { return std::string("oga"); }
 };
 
 vorbisCodec::vorbisCodec(codecSettings settings, bool store) : baseCodec(settings, "audio/ogg;codecs=vorbis", store) {

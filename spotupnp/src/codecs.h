@@ -63,6 +63,7 @@ protected:
     int total = 0;
 
     virtual void process(size_t bytes) { }
+    virtual void cleanup() { }
 
 public:
     std::string mimeType;
@@ -77,6 +78,7 @@ public:
     virtual size_t read(uint8_t* dst, size_t size, size_t min = 0, bool drain = false);
     virtual uint8_t* readInner(size_t& size, bool drain = false);
     virtual void drain(void) { }
+    virtual std::string id();
 };
 
 std::unique_ptr<baseCodec> createCodec(codecSettings::type codec, codecSettings settings, bool store = false);

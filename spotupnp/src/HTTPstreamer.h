@@ -57,6 +57,7 @@ private:
     std::atomic<bool> isRunning = false;
     std::mutex runningMutex;
     std::string host;
+    std::string streamUrl;
     int listenSock = -1;
     uint16_t port;
     HTTPheaders headers;
@@ -97,7 +98,7 @@ public:
     void flush(void);
     bool connect(int sock);
     bool feedPCMFrames(const uint8_t* data, size_t size);
-    std::string getStreamUrl(void);
+    std::string getStreamUrl(void) { return streamUrl; }
     void getMetadata(metadata_t* metadata);
     void setContentLength(int64_t contentLength);
     std::string trackId() { return trackInfo.trackId; }

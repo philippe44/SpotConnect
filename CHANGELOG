@@ -1,3 +1,8 @@
+0.6.1
+ - remove all memory leaks (except for cspot civetweb that is just upon exit and cannot be easily fixed)
+ - fix valgrind warnings (except dlopen which whould be a suppressed one)
+ - add codec extension to stream url
+ 
 0.6.0
  - add aac, vorbis and opus encoding
  - update libcodecs

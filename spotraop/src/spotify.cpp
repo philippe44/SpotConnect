@@ -68,7 +68,7 @@ private:
     size_t frameSize;
     uint32_t delay;
     size_t scratchSize;
-    uint8_t scratch[MAX_SAMPLES_PER_CHUNK * BYTES_PER_FRAME];
+    uint8_t scratch[DEFAULT_FRAMES_PER_CHUNK * BYTES_PER_FRAME];
 
     std::unique_ptr<bell::MDNSService> mdnsService;
 
@@ -101,7 +101,7 @@ CSpotPlayer::CSpotPlayer(char* name, char* id, char *credentials, struct in_addr
                          size_t frameSize, uint32_t delay, struct shadowPlayer* shadow) 
             : bell::Task("playerInstance", 48 * 1024, 0, 0), 
             clientConnected(1), addr(addr), name(name), credentials(credentials), 
-            shadow(shadow), frameSize(frameSize), delay(delay) {
+            shadow(shadow), frameSize(frameSize), delay(delay), format(format) {
     this->raopClient = shadowRaop(shadow);
 }
 
@@ -125,7 +125,11 @@ CSpotPlayer::~CSpotPlayer() {
     clientConnected.give();
     CSPOT_LOG(info, "player <%s> deletion pending", name.c_str());
 
+    // manually unregister mDNS but all other item should be deleted automatically
     if (mdnsService) mdnsService->unregisterService();
+
+    // cleanup HTTP server
+    if (server) server->close();
 
     // then just wait    
     std::scoped_lock lock(this->runningMutex);
@@ -531,6 +535,7 @@ void spotOpen(uint16_t portBase, uint16_t portRange, char *username, char *passw
 }
 
 void spotClose(void) {
+    delete bell::bellGlobalLogger;
 }
 
 struct spotPlayer* spotCreatePlayer(char* name, char *id, char *credentials, struct in_addr addr, int oggRate, size_t frameSize, uint32_t delay, struct shadowPlayer* shadow) {

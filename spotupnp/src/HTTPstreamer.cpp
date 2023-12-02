@@ -126,7 +126,7 @@ HTTPstreamer::HTTPstreamer(struct in_addr addr, std::string id, unsigned index, 
 
     // now estimate the content-length
     setContentLength(contentLength);
-    
+  
     struct sockaddr_in host;
     host.sin_addr = addr;
     host.sin_family = AF_INET;
@@ -141,6 +141,8 @@ HTTPstreamer::HTTPstreamer(struct in_addr addr, std::string id, unsigned index, 
     getsockname(listenSock, (struct sockaddr*) &host, &len);
     this->port = ntohs(host.sin_port);
     CSPOT_LOG(info, "Bound to port %u", this->port);
+
+    this->streamUrl = "http://" + this->host + ":" + std::to_string(this->port) + HTTP_BASE_URL + this->streamId + "." + this->encoder->id();
 
     if (::listen(listenSock, 1) < 0) {
         throw std::runtime_error("listen failed on port " +
@@ -187,15 +189,15 @@ void HTTPstreamer::flush() {
 bool HTTPstreamer::connect(int sock) {
     auto data = std::vector<uint8_t>();
 
-    // this proceeds by reading the full HTTP headers in one block
+    // get the HTTP headers by chunks (there should be no body)
     while (1) {
-        char buffer[2048];
-        int n = recv(sock, buffer, sizeof(buffer), 0);
+        uint8_t buffer[256];
+        int n = recv(sock, (char*) buffer, sizeof(buffer), 0);
 
         if (n <= 0)  return false;
 
         data.insert(data.end(), buffer, buffer + n);
-        if (data.size() > 4 && memcmp("\r\n\r\n", data.data() - 4, 4)) break;
+        if (data.size() >= 4 && !memcmp(data.data() + data.size() - 4, "\r\n\r\n", 4)) break;
     }
 
     // regex to remove leading and trailing spaces
@@ -208,11 +210,11 @@ bool HTTPstreamer::connect(int sock) {
         end = start = data.data() + offset;
 
         // find eol
-        while (*end != '\r' && *end != '\n' && offset++ <= data.size()) end++;
+        while (offset++ < data.size() && *end != '\r' && *end != '\n') end++;
 
         if (offset < data.size()) {
             line = std::string(start, end);
-            while ((*end == '\r' || *end == '\n') && offset++ <= data.size()) end++;
+            while ((*end == '\r' || *end == '\n') && offset++ < data.size()) end++;
         }
 
         return line;
@@ -246,12 +248,8 @@ bool HTTPstreamer::connect(int sock) {
     }
 
     // check this is what's expected
-    auto reqId = request.substr(pos + 4);
-    pos = reqId.find(" ");
-    reqId.resize(pos);
-
-    if (reqId != streamId) {
-        CSPOT_LOG(info, "Wrong client/request expected %s received %s", reqId.c_str(), streamId.c_str());
+    if (request.find(streamId) == std::string::npos) {
+        CSPOT_LOG(info, "Wrong client/request %s not in  url %s", streamId.c_str(), request.c_str());
         return false;
     }
 
@@ -445,10 +443,6 @@ bool HTTPstreamer::feedPCMFrames(const uint8_t* data, size_t size) {
     } else {
         return false;
     }
-}
-
-std::string HTTPstreamer::getStreamUrl(void) {
-    return "http://" + host + ":" + std::to_string(port) + HTTP_BASE_URL + streamId;
 }
 
 void HTTPstreamer::runTask() {
