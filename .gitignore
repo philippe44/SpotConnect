@@ -47,6 +47,7 @@ build*/
 pairing/
 spotraop/bin
 spotupnp/bin
+spotconnect*.zip
 
 # Added files
 !build.cmd

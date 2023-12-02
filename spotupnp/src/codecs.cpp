@@ -265,7 +265,7 @@ int64_t wavCodec::initialize(int64_t duration) {
 #else
     header.subchunk2Size = __builtin_bswap32(length);
     header.chunkSize = __builtin_bswap32(offsetof(struct header, subchunk2Id) + length);
-    headers.channels = __buils_bswap16(settings.channels);
+    header.channels = __builtin_bswap16(settings.channels);
     header.sampleRate = __builtin_bswap32(settings.rate);;
     header.byteRate = __builtin_bswap32(settings.rate * settings.channels * settings.size);
     header.bitsPerSample = __builtin_bswap16(settings.size * 8);
@@ -322,7 +322,7 @@ int64_t flacCodec::initialize(int64_t duration) {
 
     if (!ok) throw std::runtime_error("Cannot set FLAC parameters");
 
-    return -(duration ? ((int64_t) pcmBitrate * duration * 0.7) / (8 * 1000) : INT64_MAX);
+    return -(duration ? ((int64_t) pcmBitrate * duration * 70) / (100 * 8 * 1000) : INT64_MAX);
 }
 
 bool flacCodec::pcmWrite(const uint8_t* data, size_t len) {
