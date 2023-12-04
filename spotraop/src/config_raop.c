@@ -58,8 +58,7 @@ void SaveConfig(char *name, void *ref, bool full) {
 		}
 		if (list) ixmlNodeList_free(list);
 		common = (IXML_Node*) ixmlDocument_getElementById((IXML_Document*) root, "common");
-	}
-	else {
+	} else {
 		root = XMLAddNode(doc, NULL, "spotraop", NULL);
 		common = (IXML_Node*) XMLAddNode(doc, root, "common", NULL);
 	}

@@ -1042,8 +1042,8 @@ static void sighandler(int signum) {
 		exit(EXIT_SUCCESS);
 	}
 
-	spotClose();
 	Stop();
+	spotClose();
 	exit(EXIT_SUCCESS);
 }
 
