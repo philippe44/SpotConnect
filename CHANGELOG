@@ -1,3 +1,8 @@
+0.6.2
+ - remove memory in cspot (only at exit)
+ - fix ^C crash due to misoerdering of stop functions
+ - update libraop with hopefully corrected alac encoder
+ 
 0.6.1
  - remove all memory leaks (except for cspot civetweb that is just upon exit and cannot be easily fixed)
  - fix valgrind warnings (except dlopen which whould be a suppressed one)
