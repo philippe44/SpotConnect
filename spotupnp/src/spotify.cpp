@@ -103,7 +103,7 @@ private:
     std::deque<std::shared_ptr<HTTPstreamer>> streamers;
     std::shared_ptr<HTTPstreamer> player;
 
-    bool flow;
+    bool flow, useFileCache;
     std::deque<uint32_t> flowMarkers;
     cspot::TrackInfo flowTrackInfo;
     
@@ -123,7 +123,7 @@ public:
     inline static std::string username = "", password = "";
 
     CSpotPlayer(char* name, char* id, char *credentials, struct in_addr addr, AudioFormat audio, char* codec, bool flow,
-        int64_t contentLength, struct shadowPlayer* shadow, pthread_mutex_t* mutex);
+        int64_t contentLength, bool useFileCache, struct shadowPlayer* shadow, pthread_mutex_t* mutex);
     ~CSpotPlayer();
     void disconnect(bool abort = false);
 
@@ -132,11 +132,11 @@ public:
 };
 
 CSpotPlayer::CSpotPlayer(char* name, char* id, char *credentials, struct in_addr addr, AudioFormat format, char* codec, bool flow,
-    int64_t contentLength, struct shadowPlayer* shadow, pthread_mutex_t* mutex) : bell::Task("playerInstance",
+    int64_t contentLength, bool useFileCache, struct shadowPlayer* shadow, pthread_mutex_t* mutex) : bell::Task("playerInstance",
         48 * 1024, 0, 0),
     clientConnected(1), codec(codec), id(id), addr(addr), flow(flow),
     name(name), credentials(credentials), format(format), shadow(shadow), 
-    playerMutex(mutex) {
+    playerMutex(mutex), useFileCache(useFileCache) {
     this->contentLength = (flow && contentLength == HTTP_CL_REAL) ? HTTP_CL_NONE : contentLength;
 }
 
@@ -249,7 +249,7 @@ void CSpotPlayer::trackHandler(std::string_view trackUnique) {
 
     // create a new streamer an run it, unless in flow mode
     if (streamers.empty() || !flow) {
-        auto streamer = std::make_shared<HTTPstreamer>(addr, id, index++, codec, flow, contentLength,
+        auto streamer = std::make_shared<HTTPstreamer>(addr, id, index++, codec, flow, contentLength, useFileCache, 
                                                        newTrackInfo, trackUnique, streamers.empty() ? -startOffset : 0,
                                                        [this](std::map<std::string, std::string> headers) {
                                                             return this->onHeaders(headers);
@@ -684,14 +684,14 @@ void spotClose(void) {
 }
 
 struct spotPlayer* spotCreatePlayer(char* name, char *id, char * credentials, struct in_addr addr, int oggRate, 
-                                        char *codec, bool flow, int64_t contentLength, 
+                                        char *codec, bool flow, int64_t contentLength, bool useFileCache, 
                                         struct shadowPlayer* shadow, pthread_mutex_t *mutex) {
     AudioFormat format = AudioFormat_OGG_VORBIS_160;
 
     if (oggRate == 320) format = AudioFormat_OGG_VORBIS_320;
     else if (oggRate == 96) format = AudioFormat_OGG_VORBIS_96;
 
-    auto player = new CSpotPlayer(name, id, credentials, addr, format, codec, flow, contentLength, shadow, mutex);
+    auto player = new CSpotPlayer(name, id, credentials, addr, format, codec, flow, contentLength, useFileCache, shadow, mutex);
     if (player->startTask()) return (struct spotPlayer*) player;
 
     delete player;

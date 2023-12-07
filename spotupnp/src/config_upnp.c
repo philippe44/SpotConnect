@@ -68,6 +68,7 @@ void SaveConfig(char *name, void *ref, bool full) {
 	XMLUpdateNode(doc, common, false, "codec", glMRConfig.Codec);
 	XMLUpdateNode(doc, common, false, "vorbis_rate", "%d", glMRConfig.VorbisRate);
 	XMLUpdateNode(doc, common, false, "flow", "%d", glMRConfig.Flow);
+	XMLUpdateNode(doc, common, false, "use_filecache", "%d", glMRConfig.UseFileCache);
 	XMLUpdateNode(doc, common, false, "gapless", "%d", glMRConfig.Gapless);
 	XMLUpdateNode(doc, common, false, "artwork", "%s", glMRConfig.ArtWork);
 
@@ -145,6 +146,7 @@ static void LoadConfigItem(tMRConfig *Conf, char *name, char *val) {
 	if (!strcmp(name, "codec")) strcpy(Conf->Codec, val);
 	if (!strcmp(name, "vorbis_rate")) Conf->VorbisRate = atoi(val);
 	if (!strcmp(name, "flow")) Conf->Flow = atoi(val);
+	if (!strcmp(name, "use_filecache")) Conf->UseFileCache = atoi(val);
 	if (!strcmp(name, "gapless")) Conf->Gapless = atoi(val);
 	if (!strcmp(name, "artwork")) strcpy(Conf->ArtWork, val);
 	if (!strcmp(name, "credentials")) strcpy(Conf->Credentials, val);

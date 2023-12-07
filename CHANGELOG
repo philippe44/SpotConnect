@@ -1,5 +1,11 @@
+0.7.0
+ - HTTP header parsing regression (failed Sonos pause)
+ - cache whole track on disk fro HTTP range-request
+ - change default mode to chunk-encoding
+ - specifiy defaults on command line
+  
 0.6.2
- - remove memory in cspot (only at exit)
+ - remove memory leak in cspot (only at exit)
  - fix ^C crash due to misoerdering of stop functions
  - update libraop with hopefully corrected alac encoder
  

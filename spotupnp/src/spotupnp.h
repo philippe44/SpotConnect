@@ -21,7 +21,7 @@
 #include "metadata.h"
 #include "spotify.h"
 
-#define VERSION "v0.6.2"" ("__DATE__" @ "__TIME__")"
+#define VERSION "v0.7.0"" ("__DATE__" @ "__TIME__")"
 
 /*----------------------------------------------------------------------------*/
 /* typedefs */
@@ -57,6 +57,7 @@ typedef struct sMRConfig
 	char		Codec[STR_LEN];
 	int			VorbisRate;
 	bool		Flow;
+	bool		UseFileCache;
 	bool		Gapless;
 	int64_t		HTTPContentLength;
 	bool		SendMetaData;

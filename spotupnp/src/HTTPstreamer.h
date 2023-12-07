@@ -29,16 +29,37 @@ typedef std::function<HTTPheaders(HTTPheaders)> onHeadersHandler;
 typedef std::function<void(HTTPstreamer *self)> EoSCallback;
 
 /****************************************************************************************
+ * Cache buffer 
+ */
+class cacheBuffer {
+private:
+    uint8_t* read_p, * write_p, * wrap_p;
+
+protected:
+    uint8_t* buffer;
+    size_t size;
+
+public:
+    size_t total = 0;
+
+    cacheBuffer(size_t size) : size(size) { }
+    virtual ~cacheBuffer(void) { };
+    virtual size_t used(void) = 0;
+    virtual size_t read(uint8_t* dst, size_t max, size_t min = 0) = 0;
+    virtual uint8_t* readInner(size_t& size) = 0;
+    virtual void setReadPtr(size_t offset) = 0;
+    virtual void write(const uint8_t* src, size_t size) = 0;
+    virtual void flush(void) = 0;
+};
+
+/****************************************************************************************
  * Ring buffer (always rolls over)
  */
-class ringBuffer {
+class ringBuffer : public cacheBuffer {
 private:
-    uint8_t* buffer;
     uint8_t* read_p, * write_p, * wrap_p;
 
 public:
-    size_t size, total = 0;
-
     ringBuffer(size_t size = 5 * 1024 * 1024);
     ~ringBuffer(void) { delete[] buffer; }
     size_t used(void) { return write_p >= read_p ? write_p - read_p : size - (read_p - write_p); }
@@ -47,6 +68,25 @@ public:
     void setReadPtr(size_t offset) { read_p = buffer + (offset % this->size); }
     void write(const uint8_t* src, size_t size);
     void flush(void) { read_p = write_p = buffer; total = 0; }
+};
+
+/****************************************************************************************
+ * File buffer
+ */
+class fileBuffer : public cacheBuffer {
+private:
+    FILE* file;
+    size_t readOffset = 0;
+
+public:
+    fileBuffer(size_t size = 128 * 1024) : cacheBuffer(size) { file = tmpfile(); buffer = new uint8_t[size]; }
+    ~fileBuffer(void) { fclose(file); delete[] buffer; }
+    size_t used(void) { return total; }
+    size_t read(uint8_t* dst, size_t max, size_t min = 0);
+    uint8_t* readInner(size_t& size);
+    void setReadPtr(size_t offset) { readOffset = offset; }
+    void write(const uint8_t* src, size_t size);
+    void flush(void) { readOffset = total = 0; }
 };
 
 /****************************************************************************************
@@ -63,7 +103,7 @@ private:
     HTTPheaders headers;
     int64_t contentLength = HTTP_CL_NONE;
     std::unique_ptr<baseCodec> encoder;
-    ringBuffer cache;
+    std::unique_ptr<cacheBuffer> cache;
     size_t useCache;
     uint8_t scratch[32768];
     bool flow;
@@ -91,7 +131,7 @@ public:
     uint64_t totalIn = 0, totalOut = 0;
 
     HTTPstreamer(struct in_addr addr, std::string id, unsigned index, std::string codec, 
-                 bool flow, int64_t contentLength, 
+                 bool flow, int64_t contentLength, bool useFileCache,
                  cspot::TrackInfo track, std::string_view trackUnique, int32_t startOffset,
                  onHeadersHandler onHeaders, EoSCallback onEoS);
     ~HTTPstreamer();

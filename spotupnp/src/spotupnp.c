@@ -70,8 +70,9 @@ tMRConfig			glMRConfig = {
 							"flac",	    // Codec
 							160,		// OggRate
 							false,		// Flow
+							false,		// UseFileCache
 							true,		// Gapless
-							HTTP_CL_NONE,      
+							HTTP_CL_CHUNKED,      
 							true,		// SendMetaData
 							false,		// SendCoverArt
 							"",			// artwork
@@ -157,17 +158,18 @@ static char usage[] =
 		   "Usage: [options]\n"
 		   "  -b <ip>[:<port>]     network interface and UPnP port to use\n"
 		   "  -a <port>[:<count>]  set inbound port and range for RTP and HTTP\n"
-		   "  -r <96|160|320>      set Spotify vorbis codec rate\n"
+		   "  -r <96|160|320>      set Spotify vorbis codec rate (160)\n"
 		   "  -J <path>            path to Spotify credentials files\n"
 		   "  -j  	               store Spotify credentials in XML config file\n"
 		   "  -U <user>            Spotify username\n"
 		   "  -P <password>        Spotify password\n"
 		   "  -l                   send continuous audio stream instead of separated tracks\n"
-		   "  -g <-3|-2|-1|0>      HTTP content-length mode (-3:chunked, -2:if known, -1:none, 0:fixed)\n"
+		   "  -g <-3|-2|-1|0|<n>   HTTP content-length mode (-3:chunked(*), -2:if known, -1:none, 0:fixed, <n> your value)\n"
+		   "  -C                   HTTP caches track on disk\n"		
 		   "  -e                   disable gapless\n"
 		   "  -u <version>         set the maximum UPnP version for search (default 1)\n"
 		   "  -N <format>          transform device name using C format (%s=name)\n"
-		   "  -x <config file>     read config from file (default is ./config.xml)\n"
+		   "  -x <config file>     read config from file (default ./config.xml)\n"
 		   "  -i <config file>     discover players, save <config file> and exit\n"
 		   "  -I                   auto save config at every network scan\n"
 		   "  -f <logfile>         write debug to logfile\n"
@@ -176,7 +178,7 @@ static char usage[] =
 		   "  -n <m1,m2,...>       exclude devices whose name includes tokens\n"
 		   "  -o <m1,m2,...>       include only listed models; overrides -m and -n (use <NULL> if player don't return a model)\n"
 		   "  -d <log>=<level>     set logging level, logs: all|main|util|upnp, level: error|warn|info|debug|sdebug\n"
-		   "  -c <mp3[:<rate>]|opus[:<rate>]|vorbis[:rate]|flc[:0..9]|wav|pcm> audio format send to player\n"
+		   "  -c <mp3[:<rate>]|opus[:<rate>]|vorbis[:rate]|flc[:0..9]|wav|pcm> audio format send to player (flac)\n"
 
 #if LINUX || FREEBSD
 		   "  -z                   daemonize\n"
@@ -923,7 +925,7 @@ static void *UpdateThread(void *args) {
 							for (int i = 0; i < 6; i++) sprintf(id + i * 2, "%02x", Device->Config.mac[i]);
 							Device->SpotPlayer = spotCreatePlayer(Device->Config.Name, id, Device->Credentials, glHost, Device->Config.VorbisRate,
 																  Device->Config.Codec, Device->Config.Flow, Device->Config.HTTPContentLength, 
-																  (struct shadowPlayer*) Device, &Device->Mutex);
+																  Device->Config.UseFileCache, (struct shadowPlayer*) Device, &Device->Mutex);
 							pthread_mutex_unlock(&Device->Mutex);
 						} else if (Master && (!Device->Master || Device->Master == Device)) {
 							pthread_mutex_lock(&Device->Mutex);
@@ -978,7 +980,7 @@ static void *UpdateThread(void *args) {
 					for (int i = 0; i < 6; i++) sprintf(id + i*2, "%02x", Device->Config.mac[i]);
 					Device->SpotPlayer = spotCreatePlayer(Device->Config.Name, id, Device->Credentials, glHost, Device->Config.VorbisRate,
 														  Device->Config.Codec, Device->Config.Flow, Device->Config.HTTPContentLength, 
-														  (struct shadowPlayer*) Device, &Device->Mutex);
+														  Device->Config.UseFileCache, (struct shadowPlayer*) Device, &Device->Mutex);
 					if (!Device->SpotPlayer) {
 						LOG_ERROR("[%p]: cannot create Spotify instance (%s)", Device, Device->Config.Name);
 						pthread_mutex_lock(&Device->Mutex);
@@ -1399,7 +1401,7 @@ bool ParseArgs(int argc, char **argv) {
 		if (strstr("abxdpifmnocugrJUPN", opt) && optind < argc - 1) {
 			optarg = argv[optind + 1];
 			optind += 2;
-		} else if (strstr("tzZIklej", opt) || opt[0] == '-') {
+		} else if (strstr("tzZIklejC", opt) || opt[0] == '-') {
 			optarg = NULL;
 			optind += 1;
 		} else {
@@ -1408,6 +1410,9 @@ bool ParseArgs(int argc, char **argv) {
 		}
 
 		switch (opt[0]) {
+		case 'C':
+			glMRConfig.UseFileCache = true;
+			break;
 		case 'b':
 			strcpy(glInterface, optarg);
 			break;
@@ -1662,3 +1667,28 @@ int main(int argc, char *argv[]) {
 
 	return true;
 }
+
+/* DLNA.ORG_OP: operations parameter (string)
+ *     "00" (or "0") neither time seek range nor range supported
+ *     "01" range supported
+ *     "10" time seek range supported
+ *     "11" both time seek range and range supported
+ */
+
+/* DLNA.ORG_FLAGS, padded with 24 trailing 0s
+ *     8000 0000  31  senderPaced
+ *     4000 0000  30  lsopTimeBasedSeekSupported
+ *     2000 0000  29  lsopByteBasedSeekSupported
+ *     1000 0000  28  playcontainerSupported
+ *      800 0000  27  s0IncreasingSupported
+ *      400 0000  26  sNIncreasingSupported
+ *      200 0000  25  rtspPauseSupported
+ *      100 0000  24  streamingTransferModeSupported
+ *       80 0000  23  interactiveTransferModeSupported
+ *       40 0000  22  backgroundTransferModeSupported
+ *       20 0000  21  connectionStallingSupported
+ *       10 0000  20  dlnaVersion15Supported
+ *
+ *     Example: (1 << 24) | (1 << 22) | (1 << 21) | (1 << 20)
+ *       DLNA.ORG_FLAGS=0170 0000[0000 0000 0000 0000 0000 0000] // [] show padding
+ */

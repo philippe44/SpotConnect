@@ -32,9 +32,8 @@
  * Ring buffer (always rolls over)
  */
 
-ringBuffer::ringBuffer(size_t size) {
+ringBuffer::ringBuffer(size_t size) : cacheBuffer(size) {
     buffer = new uint8_t[size];
-    this->size = size;
     this->write_p = this->read_p = buffer;
     this->wrap_p = buffer + size;
 }
@@ -81,11 +80,49 @@ void ringBuffer::write(const uint8_t* src, size_t size) {
 }
 
 /****************************************************************************************
+ * File buffer
+ */
+
+size_t fileBuffer::read(uint8_t* dst, size_t size, size_t min) {
+    size = std::min(size, total);
+    if (size < min) return 0;
+   
+    fseek(file, readOffset, SEEK_SET);
+    size_t bytes = fread(dst, 1, size, file);
+    readOffset += bytes;
+
+    return bytes;
+}
+
+uint8_t* fileBuffer::readInner(size_t& size) {
+    if (size > this->size) {
+        delete[] buffer;
+        buffer = new uint8_t[size];
+        this->size = size;
+    }
+
+    // caller *must* consume ALL data
+    size = std::min(size, total);
+
+    fseek(file, readOffset, SEEK_SET);
+    size_t bytes = fread(buffer, 1, size, file);
+    readOffset += bytes;
+
+    return buffer;
+}
+
+void fileBuffer::write(const uint8_t* src, size_t size) {
+    fseek(file, 0, SEEK_END);
+    fwrite(src, 1, size, file);
+    total += size;
+}
+
+/****************************************************************************************
  * Class to stream audio content with HTTP
  */
 
 HTTPstreamer::HTTPstreamer(struct in_addr addr, std::string id, unsigned index, std::string codec, 
-                           bool flow, int64_t contentLength,
+                           bool flow, int64_t contentLength, bool useFileCache, 
                            cspot::TrackInfo trackInfo, std::string_view trackUnique, int32_t startOffset,
                            onHeadersHandler onHeaders, EoSCallback onEoS) :
                            bell::Task("HTTP streamer", 32 * 1024, 0, 0) {
@@ -100,6 +137,8 @@ HTTPstreamer::HTTPstreamer(struct in_addr addr, std::string id, unsigned index, 
     this->icy.interval = 0;
     // for flow mode, start with a negative offset so that we can always substract
     this->offset = startOffset;
+    if (useFileCache) this->cache = std::make_unique<fileBuffer>();
+    else this->cache = std::make_unique<ringBuffer>();
 
     codecSettings settings;
 
@@ -181,7 +220,7 @@ void HTTPstreamer::getMetadata(metadata_t* metadata) {
 
 void HTTPstreamer::flush() {
     state = OFF;
-    cache.flush();
+    cache->flush();
     encoder->flush();
     icy.trackId.clear();
 }
@@ -210,11 +249,13 @@ bool HTTPstreamer::connect(int sock) {
         end = start = data.data() + offset;
 
         // find eol
-        while (offset++ < data.size() && *end != '\r' && *end != '\n') end++;
+        for (end = start = data.data() + offset;
+             offset < data.size() && *end != '\r' && *end != '\n';
+             end++, offset++);
 
         if (offset < data.size()) {
             line = std::string(start, end);
-            while ((*end == '\r' || *end == '\n') && offset++ < data.size()) end++;
+            for (; (*end == '\r' || *end == '\n') && offset < data.size(); end++, offset++);
         }
 
         return line;
@@ -298,26 +339,26 @@ bool HTTPstreamer::connect(int sock) {
     */
 
     // handle range-request 
-    if (auto it = headers.find("range"); it != headers.end() && cache.total) {
+    if (auto it = headers.find("range"); it != headers.end() && cache->total) {
         size_t offset = 0;
         (void) !sscanf(it->second.c_str(), "bytes=%zu", &offset);
-        if (offset && offset >= cache.total - cache.used()) {
+        if (offset && offset >= cache->total - cache->used()) {
             status = "206 Partial Content";
             // see note above
             if (!isSonos) {
-                response["Content-Range"] = "bytes " + std::to_string(offset) + "-" + std::to_string(cache.used()) + "/*";
+                response["Content-Range"] = "bytes " + std::to_string(offset) + "-" + std::to_string(cache->used()) + "/*";
                 useRange = true;
             }
-            cache.setReadPtr(offset);
+            cache->setReadPtr(offset);
             useCache = true;
         }
-    } else if (cache.total) {
+    } else if (cache->total) {
         // client asking to re-open the resource, do that since begining if we can
-        cache.setReadPtr(0);
+        cache->setReadPtr(0);
         useCache = true;
         // see note above
         if (isSonos) length = INT64_MAX;
-        CSPOT_LOG(info, "re-opening HTTP stream at %d", cache.total - cache.used());
+        CSPOT_LOG(info, "re-opening HTTP stream at %d", cache->total - cache->used());
     }
 
     // Chunked is compatible with range, as it it a message property, and not en entity one
@@ -330,6 +371,7 @@ bool HTTPstreamer::connect(int sock) {
     if (length > 0) responseStr << "Content-Length: " + std::to_string(length) + "\r\n";
     responseStr << "Server: spot-connect\r\n";
     responseStr << "Content-Type: " + encoder->mimeType + "\r\n";
+    responseStr << "Accept-Ranges: bytes\r\n";
     responseStr << "Connection: close\r\n";
     responseStr << "\r\n";
     
@@ -368,7 +410,7 @@ ssize_t HTTPstreamer::streamBody(int sock, struct timeval& timeout) {
 
     // cache has priority
     if (useCache) {
-        size = cache.read(scratch, sizeof(scratch));
+        size = cache->read(scratch, sizeof(scratch));
         if (!size) useCache = false;
     }
 
@@ -376,7 +418,7 @@ ssize_t HTTPstreamer::streamBody(int sock, struct timeval& timeout) {
     if (!size) {
         size = encoder->read(scratch, sizeof(scratch), 0, state == DRAINING);
         // cache what we have anyways
-        cache.write(scratch, size);
+        cache->write(scratch, size);
     }
 
     // we really have nothing, let caller decide what's next
