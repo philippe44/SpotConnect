@@ -85,7 +85,7 @@ The default configuration file is `config.xml`, stored in the same directory as 
 - `gapless`     : use UPnP gapless mode (if players supports it)
 - `http_content_length`	   : same as `-g` command line parameter
 - `codec mp3[:<bitrate>]|aac[:<bitrate>]|vorbis[:<bitrate>]|opus[:<bitrate>]|flc[:0..9]|wav|pcm`: format used to send HTTP audio. FLAC is recommended but uses more CPU (pcm only available for UPnP). For example, `mp3:320` for 320Kb/s MP3 encoding.
-- `use_filecache`: cache the whole track on disk (see [this](#HTTP-&-UPnP-specificities) section)
+- `use_filecache`: cache the whole track on disk (see [this](#HTTP-content-length-and-transfer-modes) section)
 
 #### AirPlay
 - `alac_encode <0|1>`: format used to send audio (`0` = PCM, `1` = ALAC)
