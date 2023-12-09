@@ -44,10 +44,11 @@ public:
 
     cacheBuffer(size_t size) : size(size) { }
     virtual ~cacheBuffer(void) { };
-    virtual size_t used(void) = 0;
+    virtual size_t cached(void) = 0;
+    virtual bool reachable(size_t offset) = 0;
     virtual size_t read(uint8_t* dst, size_t max, size_t min = 0) = 0;
     virtual uint8_t* readInner(size_t& size) = 0;
-    virtual void setReadPtr(size_t offset) = 0;
+    virtual void setOrigin(size_t offset) = 0;
     virtual void write(const uint8_t* src, size_t size) = 0;
     virtual void flush(void) = 0;
 };
@@ -60,12 +61,13 @@ private:
     uint8_t* read_p, * write_p, * wrap_p;
 
 public:
-    ringBuffer(size_t size = 5 * 1024 * 1024);
+    ringBuffer(size_t size = 8 * 1024 * 1024);
     ~ringBuffer(void) { delete[] buffer; }
-    size_t used(void) { return write_p >= read_p ? write_p - read_p : size - (read_p - write_p); }
+    size_t cached(void) { return write_p >= read_p ? write_p - read_p : size - (read_p - write_p); }
+    bool reachable(size_t offset) { return offset < total && offset >= total - cached(); }
     size_t read(uint8_t* dst, size_t max, size_t min = 0);
     uint8_t* readInner(size_t& size);
-    void setReadPtr(size_t offset) { read_p = buffer + (offset % this->size); }
+    void setOrigin(size_t offset) { read_p = buffer + (offset % this->size); }
     void write(const uint8_t* src, size_t size);
     void flush(void) { read_p = write_p = buffer; total = 0; }
 };
@@ -81,10 +83,11 @@ private:
 public:
     fileBuffer(size_t size = 128 * 1024) : cacheBuffer(size) { file = tmpfile(); buffer = new uint8_t[size]; }
     ~fileBuffer(void) { fclose(file); delete[] buffer; }
-    size_t used(void) { return total; }
+    size_t cached(void) { return total; }
+    bool reachable(size_t offset) { return offset < total; }
     size_t read(uint8_t* dst, size_t max, size_t min = 0);
     uint8_t* readInner(size_t& size);
-    void setReadPtr(size_t offset) { readOffset = offset; }
+    void setOrigin(size_t offset) { readOffset = offset; }
     void write(const uint8_t* src, size_t size);
     void flush(void) { readOffset = total = 0; }
 };
@@ -100,13 +103,13 @@ private:
     std::string streamUrl;
     int listenSock = -1;
     uint16_t port;
-    HTTPheaders headers;
     int64_t contentLength = HTTP_CL_NONE;
     std::unique_ptr<baseCodec> encoder;
     std::unique_ptr<cacheBuffer> cache;
     size_t useCache;
     uint8_t scratch[32768];
     bool flow;
+    int cacheMode;
     struct {
         size_t interval, remain;
         size_t size, count;
@@ -115,7 +118,7 @@ private:
 
     void runTask();
     ssize_t streamBody(int sock, struct timeval& timeout);
-    ssize_t sendChunk(int sock, uint8_t* data, ssize_t size);
+    ssize_t sendChunk(int sock, uint8_t* data, ssize_t size, bool count);
     void getMetadata(cspot::TrackInfo& track, metadata_t* metadata);
     onHeadersHandler onHeaders;
     EoSCallback onEoS;
@@ -131,7 +134,7 @@ public:
     uint64_t totalIn = 0, totalOut = 0;
 
     HTTPstreamer(struct in_addr addr, std::string id, unsigned index, std::string codec, 
-                 bool flow, int64_t contentLength, bool useFileCache,
+                 bool flow, int64_t contentLength, int cacheMode,
                  cspot::TrackInfo track, std::string_view trackUnique, int32_t startOffset,
                  onHeadersHandler onHeaders, EoSCallback onEoS);
     ~HTTPstreamer();

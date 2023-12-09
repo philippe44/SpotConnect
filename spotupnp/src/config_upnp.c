@@ -68,22 +68,9 @@ void SaveConfig(char *name, void *ref, bool full) {
 	XMLUpdateNode(doc, common, false, "codec", glMRConfig.Codec);
 	XMLUpdateNode(doc, common, false, "vorbis_rate", "%d", glMRConfig.VorbisRate);
 	XMLUpdateNode(doc, common, false, "flow", "%d", glMRConfig.Flow);
-	XMLUpdateNode(doc, common, false, "use_filecache", "%d", glMRConfig.UseFileCache);
+	XMLUpdateNode(doc, common, false, "use_filecache", "%d", glMRConfig.CacheMode);
 	XMLUpdateNode(doc, common, false, "gapless", "%d", glMRConfig.Gapless);
 	XMLUpdateNode(doc, common, false, "artwork", "%s", glMRConfig.ArtWork);
-
-	XMLUpdateNode(doc, proto, false, "pcm", "%s", glMRConfig.ProtocolInfo.pcm);
-	XMLUpdateNode(doc, proto, false, "wav", "%s", glMRConfig.ProtocolInfo.wav);
-	XMLUpdateNode(doc, proto, false, "flac", "%s", glMRConfig.ProtocolInfo.flac);
-	XMLUpdateNode(doc, proto, false, "aac", "%s", glMRConfig.ProtocolInfo.aac);
-	XMLUpdateNode(doc, proto, false, "mp3", "%s", glMRConfig.ProtocolInfo.mp3);
-	XMLUpdateNode(doc, proto, false, "opus", "%s", glMRConfig.ProtocolInfo.opus);
-	XMLUpdateNode(doc, proto, false, "vorbis", "%s", glMRConfig.ProtocolInfo.vorbis);
-
-	XMLUpdateNode(doc, proto, false, "DLNA_OP", glMRConfig.DLNA.op);
-	XMLUpdateNode(doc, proto, false, "DLNA_FLAGS", glMRConfig.DLNA.flags);
-	XMLUpdateNode(doc, proto, false, "DLNA_OP_flow", glMRConfig.DLNA_flow.op);
-	XMLUpdateNode(doc, proto, false, "DLNA_FLAGS_flow", glMRConfig.DLNA_flow.flags);
 
 	// mutex is locked here so no risk of a player being destroyed in our back
 	for (int i = 0; i < glMaxDevices; i++) {
@@ -146,7 +133,7 @@ static void LoadConfigItem(tMRConfig *Conf, char *name, char *val) {
 	if (!strcmp(name, "codec")) strcpy(Conf->Codec, val);
 	if (!strcmp(name, "vorbis_rate")) Conf->VorbisRate = atoi(val);
 	if (!strcmp(name, "flow")) Conf->Flow = atoi(val);
-	if (!strcmp(name, "use_filecache")) Conf->UseFileCache = atoi(val);
+	if (!strcmp(name, "use_filecache")) Conf->CacheMode = atoi(val);
 	if (!strcmp(name, "gapless")) Conf->Gapless = atoi(val);
 	if (!strcmp(name, "artwork")) strcpy(Conf->ArtWork, val);
 	if (!strcmp(name, "credentials")) strcpy(Conf->Credentials, val);
@@ -157,18 +144,6 @@ static void LoadConfigItem(tMRConfig *Conf, char *name, char *val) {
 		sscanf(val,"%2x:%2x:%2x:%2x:%2x:%2x", &mac[0], &mac[1], &mac[2], &mac[3], &mac[4], &mac[5]);
 		for (int i = 0; i < 6; i++) Conf->mac[i] = mac[i];
 	}
-	if (!strcmp(name, "pcm")) strcpy(Conf->ProtocolInfo.pcm, val);
-	if (!strcmp(name, "wav")) strcpy(Conf->ProtocolInfo.wav, val);
-	if (!strcmp(name, "flac")) strcpy(Conf->ProtocolInfo.flac, val);
-	if (!strcmp(name, "aac")) strcpy(Conf->ProtocolInfo.aac, val);
-	if (!strcmp(name, "mp3")) strcpy(Conf->ProtocolInfo.mp3, val);
-	if (!strcmp(name, "vorbis")) strcpy(Conf->ProtocolInfo.vorbis, val);
-	if (!strcmp(name, "opus")) strcpy(Conf->ProtocolInfo.opus, val);
-
-	if (!strcmp(name, "DLNA_OP")) strcpy(Conf->DLNA.op, val);
-	if (!strcmp(name, "DLNA_FLAGS")) strcpy(Conf->DLNA.flags, val);
-	if (!strcmp(name, "DLNA_OP_flow")) strcpy(Conf->DLNA_flow.op, val);
-	if (!strcmp(name, "DLNA_FLAGS_flow")) strcpy(Conf->DLNA_flow.flags, val);
 }
 
 /*----------------------------------------------------------------------------*/

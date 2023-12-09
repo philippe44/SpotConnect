@@ -61,39 +61,21 @@ log_level	upnp_loglevel = lINFO;
 log_level	spot_loglevel = lINFO;
 
 tMRConfig			glMRConfig = {
-							true,		// Enabled
-							"",			// Credentials
-							"",      	// Name
+								true,			 // Enabled
+							"",					 // Credentials
+							"",			 		 // Name
 							{0, 0, 0, 0, 0, 0 }, // MAC
-							1,			// UPnPMax
-							100,		// MaxVolume
-							"flac",	    // Codec
-							160,		// OggRate
-							false,		// Flow
-							false,		// UseFileCache
-							true,		// Gapless
-							HTTP_CL_CHUNKED,      
-							true,		// SendMetaData
-							false,		// SendCoverArt
-							"",			// artwork
-							{   		// protocolInfo
-								"http-get:*:audio/L16;rate=44100;channels=2:DLNA.ORG_PN=LPCM;DLNA.ORG_OP=%s;DLNA.ORG_CI=0;DLNA.ORG_FLAGS=%s",
-								"http-get:*:audio/wav:DLNA.ORG_OP=%s;DLNA.ORG_CI=0;DLNA.ORG_FLAGS=%s",
-								"http-get:*:audio/flac:DLNA.ORG_OP=%s;DLNA.ORG_CI=0;DLNA.ORG_FLAGS=%s",
-								"http-get:*:audio/mpeg:DLNA.ORG_PN=MP3;DLNA.ORG_OP=%s;DLNA.ORG_CI=0;DLNA.ORG_FLAGS=%s",
-								"http-get:*:audio/ogg:DLNA.ORG_PN=opus;DLNA.ORG_OP=%s;DLNA.ORG_CI=0;DLNA.ORG_FLAGS=%s",
-								"http-get:*:audio/ogg:DLNA.ORG_PN=vorbis;DLNA.ORG_OP=%s;DLNA.ORG_CI=0;DLNA.ORG_FLAGS=%s",
-								"http-get:*:audio/aac:DLNA.ORG_PN=AAC_ADTS;DLNA.ORG_OP=%s;DLNA.ORG_CI=0;DLNA.ORG_FLAGS=%s",
-								//"http-get:*:audio/vnd.dlna.adts:DLNA.ORG_PN=AAC_ADTS;DLNA.ORG_OP=%s;DLNA.ORG_CI=0;DLNA.ORG_FLAGS=%s",
-							},
-							{	// DLNA.ORG OP and FLAGS in normal mode
-								"01",
-								"01700000000000000000000000000000" // DLNA.ORG OP and FLAGS in normal mode
-							},
-							{	// DLNA.ORG OP and FLAGS in flow mode
-								"00",	
-								"0c700000000000000000000000000000"
-							}
+							1,					 // UPnPMax
+							100,				 // MaxVolume
+							"flac",				 // Codec
+							160,				 // OggRate
+							false,				 // Flow
+							HTTP_CACHE_MEM,		 // CacheMode
+							true,				 // Gapless
+							HTTP_CL_CHUNKED,	 // HTTPContentLength   
+							true,				 // SendMetaData
+							false,				 // SendCoverArt
+							"",					 // artwork
 					};
 
 /*----------------------------------------------------------------------------*/
@@ -165,7 +147,7 @@ static char usage[] =
 		   "  -P <password>        Spotify password\n"
 		   "  -l                   send continuous audio stream instead of separated tracks\n"
 		   "  -g <-3|-2|-1|0|<n>   HTTP content-length mode (-3:chunked(*), -2:if known, -1:none, 0:fixed, <n> your value)\n"
-		   "  -C                   HTTP caches track on disk\n"		
+		   "  -C <mode>			   HTTP caching mode (0=memory(*), 1=memory but say it's infinite, 2=on disk)\n"		
 		   "  -e                   disable gapless\n"
 		   "  -u <version>         set the maximum UPnP version for search (default 1)\n"
 		   "  -N <format>          transform device name using C format (%s=name)\n"
@@ -433,36 +415,6 @@ void shadowRequest(struct shadowPlayer *shadow, enum spotEvent event, ...) {
 
 	va_end(args);
 	pthread_mutex_unlock(&Device->Mutex);
-}
-
-/*----------------------------------------------------------------------------*/
-struct HTTPheaderList* shadowHeaders(struct shadowPlayer* shadow, struct HTTPheaderList* request) {
-	struct sMR* Device = (struct sMR*) shadow;
-	struct HTTPheaderList* response = NULL;
-
-	for (char* key = NULL, *value; request; request = request->next, key = NULL) {
-		if (!strcasecmp(request->key, "transferMode.dlna.org")) {
-			key = strdup(request->key);
-			value = strdup(request->value);
-		} else if (!strcasecmp(request->key, "getcontentFeatures.dlna.org")) {
-			// we want the 4th field of ProtocolInfo
-			key = strdup("contentFeatures.dlna.org");
-			value = malloc(strlen(Device->ProtocolInfo) + 1);
-			(void)!sscanf(Device->ProtocolInfo, "%*[^:]:%*[^:]:%*[^:]:%s", value);
-		}
-
-		LOG_DEBUG("received header %s => %s", request->key, request->value);
-
-		if (key) {
-			struct HTTPheaderList* resp = calloc(1, sizeof(struct HTTPheaderList));
-			resp->key = key;
-			resp->value = value;
-			resp->next = response;
-			response = resp;
-		}
-	}
-
-	return response;
 }
 
 /*----------------------------------------------------------------------------*/
@@ -925,7 +877,7 @@ static void *UpdateThread(void *args) {
 							for (int i = 0; i < 6; i++) sprintf(id + i * 2, "%02x", Device->Config.mac[i]);
 							Device->SpotPlayer = spotCreatePlayer(Device->Config.Name, id, Device->Credentials, glHost, Device->Config.VorbisRate,
 																  Device->Config.Codec, Device->Config.Flow, Device->Config.HTTPContentLength, 
-																  Device->Config.UseFileCache, (struct shadowPlayer*) Device, &Device->Mutex);
+																  Device->Config.CacheMode, (struct shadowPlayer*) Device, &Device->Mutex);
 							pthread_mutex_unlock(&Device->Mutex);
 						} else if (Master && (!Device->Master || Device->Master == Device)) {
 							pthread_mutex_lock(&Device->Mutex);
@@ -980,7 +932,7 @@ static void *UpdateThread(void *args) {
 					for (int i = 0; i < 6; i++) sprintf(id + i*2, "%02x", Device->Config.mac[i]);
 					Device->SpotPlayer = spotCreatePlayer(Device->Config.Name, id, Device->Credentials, glHost, Device->Config.VorbisRate,
 														  Device->Config.Codec, Device->Config.Flow, Device->Config.HTTPContentLength, 
-														  Device->Config.UseFileCache, (struct shadowPlayer*) Device, &Device->Mutex);
+														  Device->Config.CacheMode, (struct shadowPlayer*) Device, &Device->Mutex);
 					if (!Device->SpotPlayer) {
 						LOG_ERROR("[%p]: cannot create Spotify instance (%s)", Device, Device->Config.Name);
 						pthread_mutex_lock(&Device->Mutex);
@@ -1155,19 +1107,19 @@ static bool AddMRDevice(struct sMR* Device, char* UDN, IXML_Document* DescDoc, c
 	if (!*Device->Config.Name) sprintf(Device->Config.Name, glNameFormat, friendlyName);
 	queue_init(&Device->ActionQueue, false, NULL);
 
-	// set protocolinfo (will be used for some HTTP response)
-	char* ProtocolInfo;
-	if (!strcasecmp(Device->Config.Codec, "pcm")) ProtocolInfo = Device->Config.ProtocolInfo.pcm;
-	else if (!strcasecmp(Device->Config.Codec, "wav")) ProtocolInfo = Device->Config.ProtocolInfo.wav;
-	else if (strcasestr(Device->Config.Codec, "mp3")) ProtocolInfo = Device->Config.ProtocolInfo.mp3;
-	else if (strcasestr(Device->Config.Codec, "opus")) ProtocolInfo = Device->Config.ProtocolInfo.opus;
-	else if (strcasestr(Device->Config.Codec, "vorbis")) ProtocolInfo = Device->Config.ProtocolInfo.vorbis;
-	else if (strcasestr(Device->Config.Codec, "aac")) ProtocolInfo = Device->Config.ProtocolInfo.aac;
-	else ProtocolInfo = Device->Config.ProtocolInfo.flac;
 
-	sprintf(Device->ProtocolInfo, ProtocolInfo,
-		Device->Config.Flow ? Device->Config.DLNA_flow.op : Device->Config.DLNA.op,
-		Device->Config.Flow ? Device->Config.DLNA_flow.flags : Device->Config.DLNA.flags );
+	char* MimeType;
+	if (!strcasecmp(Device->Config.Codec, "pcm")) MimeType = "audio/L16;rate=44100;channels=2";
+	else if (!strcasecmp(Device->Config.Codec, "wav")) MimeType = "audio/wav";
+	else if (strcasestr(Device->Config.Codec, "mp3")) MimeType = "audio/mepg";
+	else if (strcasestr(Device->Config.Codec, "opus")) MimeType = "audio/ogg";
+	else if (strcasestr(Device->Config.Codec, "vorbis")) MimeType = "audio/ogg";
+	else if (strcasestr(Device->Config.Codec, "aac")) MimeType = "audio/aac";
+	else MimeType = "audio/flac";
+
+	char* DLNA_ORG = makeDLNA_ORG(Device->Config.Codec, Device->Config.CacheMode != HTTP_CACHE_MEM, Device->Config.Flow);
+	sprintf(Device->ProtocolInfo, "http-get:*:%s:%s", MimeType, DLNA_ORG);
+	free(DLNA_ORG);
 
 	if (!memcmp(Device->Config.mac, "\0\0\0\0\0\0", 6)) {
 		char ip[32];
@@ -1398,10 +1350,10 @@ bool ParseArgs(int argc, char **argv) {
 
 	while (optind < argc && strlen(argv[optind]) >= 2 && argv[optind][0] == '-') {
 		char *opt = argv[optind] + 1;
-		if (strstr("abxdpifmnocugrJUPN", opt) && optind < argc - 1) {
+		if (strstr("abxdpifmnocugrJUPNC", opt) && optind < argc - 1) {
 			optarg = argv[optind + 1];
 			optind += 2;
-		} else if (strstr("tzZIklejC", opt) || opt[0] == '-') {
+		} else if (strstr("tzZIklej", opt) || opt[0] == '-') {
 			optarg = NULL;
 			optind += 1;
 		} else {
@@ -1411,7 +1363,7 @@ bool ParseArgs(int argc, char **argv) {
 
 		switch (opt[0]) {
 		case 'C':
-			glMRConfig.UseFileCache = true;
+			glMRConfig.CacheMode = atoi(optarg);
 			break;
 		case 'b':
 			strcpy(glInterface, optarg);

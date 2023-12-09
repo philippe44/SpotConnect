@@ -57,29 +57,12 @@ typedef struct sMRConfig
 	char		Codec[STR_LEN];
 	int			VorbisRate;
 	bool		Flow;
-	bool		UseFileCache;
+	int			CacheMode;
 	bool		Gapless;
 	int64_t		HTTPContentLength;
 	bool		SendMetaData;
 	bool		SendCoverArt;
 	char		ArtWork[4*STR_LEN];
-	struct {
-		char pcm[STR_LEN];
-		char wav[STR_LEN];
-		char flac[STR_LEN];
-		char mp3[STR_LEN];
-		char opus[STR_LEN];
-		char vorbis[STR_LEN];
-		char aac[STR_LEN];
-	} ProtocolInfo;
-	struct {
-		char op[STR_LEN];
-		char flags[STR_LEN];
-	} DLNA;
-	struct {
-		char op[STR_LEN];
-		char flags[STR_LEN];
-	} DLNA_flow;
 } tMRConfig;
 
 struct sMR {
