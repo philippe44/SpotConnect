@@ -205,11 +205,7 @@ To identify your Sonos players, pick an identified IP address, and visit the Son
 [@chpusch](https://github.com/chpusch) has found that Bose SoundTouch work well including synchonisation (as for Sonos, you need to use Bose's native application for grouping / ungrouping). I don't have a SoundTouch system so I cannot do the level of slave/master detection I did for Sonos
 
 #### Pioneer/Phorus/Play-Fi
-Some of these speakers only support mp3 and require a modified `ProtocolInfo` to stream correctly. This can be done by editing the config file and changing `<codec>flc</codec>` to `<codec>mp3</codec>` and replacing the `<mp3>..</mp3>` line with: 
-```
-<mp3>http-get:*:audio/mpeg:DLNA.ORG_PN=MP3;DLNA.ORG_OP=00;DLNA.ORG_CI=0;DLNA.ORG_FLAGS=0d500000000000000000000000000000</mp3>
-```
-Note: you can use the `-i config.xml` to generate a config file if you do not have one.
+Some of these speakers only support mp3
 
 ## Misc tips
  
@@ -234,13 +230,6 @@ All this might still not work as some players do not understand that the source 
 To add insult to injury, when pausing some players close the connection and re-open it upon resume, but want the whole resource again, they can't even bother do a range-request starting at the last byte they received. That happens regardless of how you've instructed them that they should **NOT** do that. The only option is then to cache the whole track, which I can't do in memory, so in that case use the option `use_filecache` (or -C on command line) to have the whole track buffered on disk (in system tmp's). Now, even that might not suffice in chunked-encoding mode, these players **WANT** a track size to be able to pause. So in that case you need use HTTP mode 0 as well.
 
 UPnP is a boatload of crap, unfortunately...
-
-### UPnP/DLNA ProtocolInfo
-When sending DLNA/UPnP content, there is a special parameter named `ProtocolInfo` that is found in the UPnP command (DIDL-lite header) and can be also explicitly requested by the player during a GET. That field is automatically built but is subject to a lot of intepretations, so it might be helpful to manually define it and you can do that for pcm, wav, flac, aac, vorbis, opus and mp3 format using the field in the section \<protocol_info\> in your config file.
-
-There is another part of this filed named DLNA which changes when using the 'flow' mode (sending a single stream) vs sending track by track. The default should work, but UPnP is such a mess that some players do require special versions. You can tweaks these here, search DLNA protocol info for more information.
-
-The description of DIDL-lite, ProtocolInfo and DLNA is way beyond the scope of this README, so you should seek for information before tweaking these.
 
 ## Compiling from source
 It's a CMake-oriented build, and there is a bash script (built.sh) and Windows one (build.cmd). The bash script is intended for cross-platform build and you might be able to call directly your native compiler, but have a look at the command line in the build.sh to make sure it can work. 
