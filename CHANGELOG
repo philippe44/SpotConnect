@@ -1,6 +1,12 @@
+0.8.0
+ - change URL format for better player compatibility
+ - refactor cache
+ - add -C 0/1/2 cache options
+ - remove manual tweaking of protocolInfo
+ 
 0.7.0
  - HTTP header parsing regression (failed Sonos pause)
- - cache whole track on disk fro HTTP range-request
+ - cache whole track on disk for HTTP range-request
  - change default mode to chunk-encoding
  - specifiy defaults on command line
   

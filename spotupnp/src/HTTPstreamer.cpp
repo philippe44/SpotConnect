@@ -36,48 +36,56 @@
 ringBuffer::ringBuffer(size_t size) : cacheBuffer(size) {
     buffer = new uint8_t[size];
     this->write_p = this->read_p = buffer;
-    this->wrap_p = buffer + size;
+    this->wrap = buffer + size;
+}
+
+ssize_t ringBuffer::scope(size_t offset) {
+    if (offset >= total) return offset - total + 1;
+    else if (offset >= total - level()) return 0;
+    else return offset - total + level();
+}
+
+void ringBuffer::setOffset(size_t offset) {
+    if (offset >= total) read_p = write_p;
+    else if (offset < total - level()) read_p = (write_p + 1) == wrap ? buffer : write_p + 1;
+    else read_p = buffer + offset % size;
 }
 
 size_t ringBuffer::read(uint8_t* dst, size_t size, size_t min) {
-    size = std::min(size, cached());
+    size = std::min(size, pending());
     if (size < min) return 0;
 
-    size_t cont = std::min(size, (size_t) (wrap_p - read_p));
+    size_t cont = std::min(size, (size_t) (wrap - read_p));
     memcpy(dst, read_p, cont);
     memcpy(dst + cont, buffer, size - cont);
 
     read_p += size;
-    if (read_p >= wrap_p) read_p -= this->size;
+    if (read_p >= wrap) read_p -= this->size;
     return size;
 }
 
 uint8_t* ringBuffer::readInner(size_t& size) {
     // caller *must* consume ALL data
-    size = std::min(size, cached());
-    size = std::min(size, (size_t)(wrap_p - read_p));
+    size = std::min(size, pending());
+    size = std::min(size, (size_t)(wrap - read_p));
 
     uint8_t* p = read_p;
-    read_p += size;
-    if (read_p >= wrap_p) read_p -= this->size;
 
-    return p;
+    read_p += size;
+    if (read_p >= wrap) read_p -= this->size;
+    return size ? p : NULL;
 }
 
 void ringBuffer::write(const uint8_t* src, size_t size) {
-    size_t cont = std::min(size, (size_t)(wrap_p - write_p));
+    size_t cont = std::min(size, (size_t)(wrap - write_p));
     memcpy(write_p, src, cont);
     memcpy(buffer, src + cont, size - cont);
 
     write_p += size;
-    if (write_p >= wrap_p) write_p -= this->size;
-
-    if (cached() + size >= this->size) {
-        read_p = write_p + 1;
-        if (read_p >= wrap_p) read_p = buffer;
-    }
-
     total += size;
+
+    if (write_p >= wrap) write_p -= this->size;   
+    if (level() == this->size - 1) read_p = (write_p + 1 == wrap) ? buffer : write_p + 1;
 }
 
 /****************************************************************************************
@@ -106,10 +114,10 @@ uint8_t* fileBuffer::readInner(size_t& size) {
     size = std::min(size, total);
 
     fseek(file, readOffset, SEEK_SET);
-    size_t bytes = fread(buffer, 1, size, file);
-    readOffset += bytes;
+    size = fread(buffer, 1, size, file);
+    readOffset += size;
 
-    return buffer;
+    return size ? buffer : NULL;
 }
 
 void fileBuffer::write(const uint8_t* src, size_t size) {
@@ -180,7 +188,7 @@ HTTPstreamer::HTTPstreamer(struct in_addr addr, std::string id, unsigned index, 
     this->port = ntohs(host.sin_port);
     CSPOT_LOG(info, "Bound to port %u", this->port);
 
-    this->streamUrl = "http://" + this->host + ":" + std::to_string(this->port) + HTTP_BASE_URL + this->streamId + "." + this->encoder->id();
+    this->streamUrl = "http://" + this->host + ":" + std::to_string(this->port) + HTTP_BASE_URL + "." + this->encoder->id() + "?id=" + this->streamId;
 
     if (::listen(listenSock, 1) < 0) {
         throw std::runtime_error("listen failed on port " +
@@ -215,6 +223,8 @@ void HTTPstreamer::getMetadata(metadata_t* metadata) {
     metadata->album = trackInfo.album.c_str();
     metadata->artist = trackInfo.artist.c_str();
     metadata->artwork = trackInfo.imageUrl.c_str();
+    metadata->track = trackInfo.number;
+    metadata->disc = trackInfo.discNumber;
 }
 
 void HTTPstreamer::flush() {
@@ -291,13 +301,11 @@ bool HTTPstreamer::connect(int sock) {
     if (onHeaders) response = onHeaders(headers);
     
     bool isHTTP11 = request.find("HTTP/1.1") != std::string::npos;
-    bool isHead = request.find("HEAD") != std::string::npos;
+    bool sendBody = request.find("HEAD") == std::string::npos;
     std::string status = "200 OK";
-    bool noBody = false, isSonos = headers["user-agent"].find("sonos") != std::string::npos;
+    bool isSonos = headers["user-agent"].find("sonos") != std::string::npos;
     // if we know the real length because it's a redo, then tell it if authorized
     int64_t length = (state == DRAINED && (contentLength >= 0 || contentLength == HTTP_CL_KNOWN)) ? totalOut : contentLength;
-
-    useCache = false;
 
     // check if icy metadata is requested
     if (auto it = headers.find("icy-metadata"); it != headers.end() && flow) {
@@ -314,7 +322,7 @@ bool HTTPstreamer::connect(int sock) {
     }
     if (auto it = headers.find("getAvailableSeekRange.dlna.org"); it != headers.end() && cache->total) {
         response["contentFeatures.dlna.org"] = "availableSeekRange.dlna.org: 0 bytes=" +
-                                               std::to_string(cache->total - (cacheMode == HTTP_CACHE_MEM ? cache->cached() : 0)) +
+                                               std::to_string(cache->total - (cacheMode == HTTP_CACHE_MEM ? cache->level() : 0)) +
                                                "-" + std::to_string(cache->total - 1);
     }
 
@@ -327,48 +335,55 @@ bool HTTPstreamer::connect(int sock) {
      * for a proper range request but we need to answer 206 without a content-range (which is not 
      * compliant) or they fail as well */
 
+    // by default, use cahce and restart from oldest (might change that below)
+    useCache = true;
+    cache->setOffset(0);
+
     // handle range-request 
     if (auto it = headers.find("range"); it != headers.end() && cache->total) {
         size_t offset = 0;
         (void) !sscanf(it->second.c_str(), "bytes=%zu", &offset);
-        if (offset && cache->reachable(offset)) {
+
+        // first try to see if we can serve that
+        if (offset && cache->scope(offset) == 0) {
             status = "206 Partial Content";
             // see note above
             if (!isSonos) response["Content-Range"] = "bytes " + std::to_string(offset) + 
-                                                      "-" + std::to_string(cache->cached()) + "/*";
-            cache->setOrigin(offset);
-            useCache = true;
+                                                      "-" + std::to_string(cache->total - 1) + "/*";
             // do not sent content-length on PartialResponse
+            cache->setOffset(offset);
             length = 0;
+            CSPOT_LOG(info, "service partial-content %zu-%zu", offset, cache->total - 1);
         } else if (offset) {
-            status = "410 Gone";
-            noBody = true;
-            CSPOT_LOG(info, "unaccessible offset %zu (resource gone)", offset);
+            // there is an offset out of scope, give-up
+            sendBody = false;
+            status = "416 Range Not Satisfiable";
+            response.clear();
+            response["Content-Range"] = "bytes */" + std::to_string(cache->total);
+            CSPOT_LOG(info, "can't serve offset %zu (cached:%zu)", offset, cache->total);
         }
     } else if (cache->total) {
-        // client asking to re-open the resource, do that since begining if we can
-        cache->setOrigin(0);
-        useCache = true;
-        // see note above
+        // see note above regarding Sonos
         if (isSonos) length = INT64_MAX;
-        CSPOT_LOG(info, "re-opening HTTP stream at %d", cache->total - cache->cached());
+        CSPOT_LOG(info, "service with cache from %zu (cached:%zu)", cache->total - cache->level(), cache->total);
+    } else {
+        // normal request, don't use cache
+        useCache = false;
     }
-
-    // Chunked is compatible with range, as it it a message property, and not en entity one
-    if (isHTTP11 && length == HTTP_CL_CHUNKED && !isHead) response["Transfer-Encoding"] = "chunked";
 
     // c++ conversion to string is really a joke
     std::stringstream responseStr;
     responseStr << (isHTTP11 ? "HTTP/1.1 " : "HTTP/1.0 ") + status + "\r\n";
     
-    // some reponse might not require headers at all
-    if (!noBody) {
-        for (auto it = response.cbegin(); it != response.cend(); ++it) responseStr << it->first + ": " + it->second + "\r\n";
+    if (sendBody) {
         if (length > 0) responseStr << "Content-Length: " + std::to_string(length) + "\r\n";
-        responseStr << "Server: spot-connect\r\n";
+        else if (isHTTP11 && length == HTTP_CL_CHUNKED) responseStr << "Transfer-Encoding: chunked\r\n";
         responseStr << "Accept-Ranges: bytes\r\n";
     }
 
+    // send accumulated headers
+    for (auto it = response.cbegin(); it != response.cend(); ++it) responseStr << it->first + ": " + it->second + "\r\n";
+    responseStr << "Server: spot-connect\r\n";
     responseStr << "Content-Type: " + encoder->mimeType + "\r\n";
     responseStr << "Connection: close\r\n";
     responseStr << "\r\n";
@@ -376,7 +391,7 @@ bool HTTPstreamer::connect(int sock) {
     send(sock, responseStr.str().c_str(), responseStr.str().size(), 0);
     CSPOT_LOG(info, "HTTP response =>\n%s", responseStr.str().c_str());
 
-    return !isHead && !noBody;
+    return sendBody;
 }
 
 ssize_t HTTPstreamer::sendChunk(int sock, uint8_t* data, ssize_t size, bool count) {
@@ -406,14 +421,14 @@ ssize_t HTTPstreamer::sendChunk(int sock, uint8_t* data, ssize_t size, bool coun
 ssize_t HTTPstreamer::streamBody(int sock, struct timeval& timeout) {
     ssize_t size = 0;
 
-    // cache has priority and when drained is the only source
-    if (useCache || state == DRAINED) {
+    // cache has priority
+    if (useCache) {
         size = cache->read(scratch, sizeof(scratch));
         if (!size) useCache = false;
     }
 
-    // not using cache or empty cache, get fresh data from encoder unless we are drained
-    if (!size && state != DRAINED) {
+    // not using cache or empty cache, get fresh data from encoder
+    if (!size) {
         size = encoder->read(scratch, sizeof(scratch), 0, state == DRAINING);
         // cache what we have anyway
         cache->write(scratch, size);
@@ -426,7 +441,6 @@ ssize_t HTTPstreamer::streamBody(int sock, struct timeval& timeout) {
     }
 
     int offset = 0;
-    bool countData = !useCache && state != DRAINED;
 
     // check if ICY sending is active (len < ICY_INTERVAL)
     if (icy.interval && size > icy.remain) {
@@ -450,7 +464,7 @@ ssize_t HTTPstreamer::streamBody(int sock, struct timeval& timeout) {
 
         // send remaining data first
         offset = icy.remain;
-        if (offset) sendChunk(sock, (uint8_t*)scratch, offset, countData);
+        if (offset) sendChunk(sock, (uint8_t*)scratch, offset, !useCache);
         size -= offset;
 
         // then send icy data
@@ -458,7 +472,7 @@ ssize_t HTTPstreamer::streamBody(int sock, struct timeval& timeout) {
         icy.remain = icy.interval;
     }
 
-    ssize_t sent = sendChunk(sock, (uint8_t*) scratch + offset, size, countData);
+    ssize_t sent = sendChunk(sock, (uint8_t*) scratch + offset, size, !useCache);
     
     // update remaining count with desired length
     if (icy.interval) icy.remain -= size;
@@ -520,6 +534,7 @@ void HTTPstreamer::runTask() {
             success = connect(sock);
             // we might already be in draining mode
             if (success && state <= STREAMING) state = STREAMING;
+            else if (state == DRAINED) useCache = true;
         }
 
         // terminate connection if required by HTTP peer
@@ -531,8 +546,8 @@ void HTTPstreamer::runTask() {
             continue;
         }
 
-        ssize_t sent = 0;
-        if (state >= STREAMING) sent = streamBody(sock, timeout);
+        // try to stream some data 
+        ssize_t sent = state >= STREAMING || (state == DRAINED && useCache) ? streamBody(sock, timeout) : 0;
 
         if (state >= DRAINING && !sent) {
            // chunked-encoding terminates by a last empty chunk ending sequence
@@ -611,7 +626,7 @@ typedef enum {
     DLNA_ORG_FLAG_DLNA_V15 = (1 << 20),
 } dlna_org_flags_t;
 
-char* makeDLNA_ORG(const char *codec, bool fullCache, bool live) {
+char* makeDLNA_ORG(const char *codec, bool infiniteCache, bool live) {
     const char* DLNAOrgPN = "";
         
     if (!strcasecmp(codec, "mp3")) DLNAOrgPN = "DLNA.ORG_PN=MP3;";
@@ -623,20 +638,20 @@ char* makeDLNA_ORG(const char *codec, bool fullCache, bool live) {
      * access and when that is set, player shall not expect full access to already received
      * bytes and for example, S0 can increase (it does not have to). When live is set, either
      * because we have no duration (it's a webradio) or we are in flow, we have to set S0
-     * because we lose track of the head and we can't have full cache.
+     * because we lose track of the head. Caller can still decide to have infinite cache...
      * The value for Sn is questionable as it actually changes only for live stream but we
      * don't have access to it until we have received full content. As it is supposed to
-     * represent what is accessible, not the media, we'll always set it. We can still use
-     * in-memory cache, so b29 shall be set (then OP shall not be). If user has opted-out
-     * file-cache, we can only do b29. In any case, we don't support time-based seek */
-
-     uint32_t org_op = (fullCache && !live) ? DLNA_ORG_OPERATION_RANGE : 0;
+     * represent what is accessible, not the media itself, we'll always set it. We can still use
+     * partial cache, so b29 shall be set (then OP shall not be). If user has opted-out file
+     * cache (or no fake), we can only do b29. In any case, we don't support time-based seek */
+    
+     uint32_t org_op = infiniteCache ? DLNA_ORG_OPERATION_RANGE : 0;
      uint32_t org_flags = DLNA_ORG_FLAG_STREAMING_TRANSFERT_MODE | DLNA_ORG_FLAG_BACKGROUND_TRANSFERT_MODE |
                           DLNA_ORG_FLAG_CONNECTION_STALL | DLNA_ORG_FLAG_DLNA_V15 |
                           DLNA_ORG_FLAG_SN_INCREASE;
 
-     if (!fullCache || live) org_flags |= DLNA_ORG_FLAG_S0_INCREASE;
-     if (!org_op) org_flags |= DLNA_ORG_FLAG_BYTE_BASED_SEEK;
+     if (live) org_flags |= DLNA_ORG_FLAG_S0_INCREASE;
+     if (!infiniteCache) org_flags |= DLNA_ORG_FLAG_BYTE_BASED_SEEK;
 
      size_t n = snprintf(NULL, 0, "%sDLNA.ORG_OP=%02u;DLNA.ORG_CI=0;DLNA.ORG_FLAGS=%08x000000000000000000000000",
                               DLNAOrgPN, org_op, org_flags);

@@ -70,7 +70,7 @@ tMRConfig			glMRConfig = {
 							"flac",				 // Codec
 							160,				 // OggRate
 							false,				 // Flow
-							HTTP_CACHE_MEM,		 // CacheMode
+							HTTP_CACHE_INFINITE, // CacheMode
 							true,				 // Gapless
 							HTTP_CL_CHUNKED,	 // HTTPContentLength   
 							true,				 // SendMetaData
@@ -147,7 +147,7 @@ static char usage[] =
 		   "  -P <password>        Spotify password\n"
 		   "  -l                   send continuous audio stream instead of separated tracks\n"
 		   "  -g <-3|-2|-1|0|<n>   HTTP content-length mode (-3:chunked(*), -2:if known, -1:none, 0:fixed, <n> your value)\n"
-		   "  -C <mode>			   HTTP caching mode (0=memory(*), 1=memory but say it's infinite, 2=on disk)\n"		
+		   "  -C <mode>			   HTTP caching mode (0=memory, 1=memory but claim it's infinite(*), 2=on disk)\n"		
 		   "  -e                   disable gapless\n"
 		   "  -u <version>         set the maximum UPnP version for search (default 1)\n"
 		   "  -N <format>          transform device name using C format (%s=name)\n"
@@ -281,7 +281,6 @@ void SetTrackURI(struct sMR* Device, bool Next, const char * StreamUrl, metadata
 
 	if (Next) AVTSetNextURI(Device, url, MetaData, Device->ProtocolInfo);
 	else AVTSetURI(Device, url, MetaData, Device->ProtocolInfo);
-	LOG_INFO("[%p]: set URI %s", Device, url);
 
 	free(url);
 }
@@ -1107,7 +1106,6 @@ static bool AddMRDevice(struct sMR* Device, char* UDN, IXML_Document* DescDoc, c
 	if (!*Device->Config.Name) sprintf(Device->Config.Name, glNameFormat, friendlyName);
 	queue_init(&Device->ActionQueue, false, NULL);
 
-
 	char* MimeType;
 	if (!strcasecmp(Device->Config.Codec, "pcm")) MimeType = "audio/L16;rate=44100;channels=2";
 	else if (!strcasecmp(Device->Config.Codec, "wav")) MimeType = "audio/wav";
@@ -1117,6 +1115,7 @@ static bool AddMRDevice(struct sMR* Device, char* UDN, IXML_Document* DescDoc, c
 	else if (strcasestr(Device->Config.Codec, "aac")) MimeType = "audio/aac";
 	else MimeType = "audio/flac";
 
+	// we cheat a bit as we allow cache to pretend to be infinite
 	char* DLNA_ORG = makeDLNA_ORG(Device->Config.Codec, Device->Config.CacheMode != HTTP_CACHE_MEM, Device->Config.Flow);
 	sprintf(Device->ProtocolInfo, "http-get:*:%s:%s", MimeType, DLNA_ORG);
 	free(DLNA_ORG);

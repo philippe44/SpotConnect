@@ -44,11 +44,12 @@ public:
 
     cacheBuffer(size_t size) : size(size) { }
     virtual ~cacheBuffer(void) { };
-    virtual size_t cached(void) = 0;
-    virtual bool reachable(size_t offset) = 0;
+    virtual size_t level(void) = 0;
+    virtual size_t pending(void) = 0;
+    virtual ssize_t scope(size_t offset) = 0;
     virtual size_t read(uint8_t* dst, size_t max, size_t min = 0) = 0;
     virtual uint8_t* readInner(size_t& size) = 0;
-    virtual void setOrigin(size_t offset) = 0;
+    virtual void setOffset(size_t offset) = 0;
     virtual void write(const uint8_t* src, size_t size) = 0;
     virtual void flush(void) = 0;
 };
@@ -58,16 +59,17 @@ public:
  */
 class ringBuffer : public cacheBuffer {
 private:
-    uint8_t* read_p, * write_p, * wrap_p;
+    uint8_t* read_p, * write_p, * wrap;
 
 public:
     ringBuffer(size_t size = 8 * 1024 * 1024);
     ~ringBuffer(void) { delete[] buffer; }
-    size_t cached(void) { return write_p >= read_p ? write_p - read_p : size - (read_p - write_p); }
-    bool reachable(size_t offset) { return offset < total && offset >= total - cached(); }
+    size_t level(void) { return total < size ? total : size - 1; }  
+    size_t pending(void) { return write_p >= read_p ? write_p - read_p : wrap - read_p; }
+    ssize_t scope(size_t offset);
     size_t read(uint8_t* dst, size_t max, size_t min = 0);
     uint8_t* readInner(size_t& size);
-    void setOrigin(size_t offset) { read_p = buffer + (offset % this->size); }
+    void setOffset(size_t offset);
     void write(const uint8_t* src, size_t size);
     void flush(void) { read_p = write_p = buffer; total = 0; }
 };
@@ -83,11 +85,12 @@ private:
 public:
     fileBuffer(size_t size = 128 * 1024) : cacheBuffer(size) { file = tmpfile(); buffer = new uint8_t[size]; }
     ~fileBuffer(void) { fclose(file); delete[] buffer; }
-    size_t cached(void) { return total; }
-    bool reachable(size_t offset) { return offset < total; }
+    size_t level(void) { return total; }
+    size_t pending(void) { return total - readOffset; }
+    ssize_t scope(size_t offset) { return offset >= total ? offset - total + 1 : 0; }
     size_t read(uint8_t* dst, size_t max, size_t min = 0);
     uint8_t* readInner(size_t& size);
-    void setOrigin(size_t offset) { readOffset = offset; }
+    void setOffset(size_t offset) { readOffset = offset >= 0 ? offset : 0; }
     void write(const uint8_t* src, size_t size);
     void flush(void) { readOffset = total = 0; }
 };
