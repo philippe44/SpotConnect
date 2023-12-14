@@ -356,7 +356,6 @@ static void UpdateDevices() {
 		if (!Device->Running || Device->Config.RemoveTimeout <= 0 || !Device->Expired || now < Device->Expired + Device->Config.RemoveTimeout * 1000) continue;
 
 		LOG_INFO("[%p]: removing renderer (%s) on timeout", Device, Device->FriendlyName);
-		spotDeletePlayer(Device->SpotPlayer);
 		DelRaopDevice(Device);
 	}
 
@@ -382,9 +381,9 @@ static bool mDNSsearchCallback(mdnssd_service_t *slist, void *cookie, bool *stop
 			Device->Expired = 0;
 			// device disconnected
 			if (s->expired) {
-				if (!raopcl_is_connected(Device->Raop) && !Device->Config.RemoveTimeout) {
+				// since = 0 means it's a bye-bye
+				if (!raopcl_is_connected(Device->Raop) && (!Device->Config.RemoveTimeout || !s->since)) {
 					LOG_INFO("[%p]: removing renderer (%s)", Device, Device->FriendlyName);
-					spotDeletePlayer(Device->SpotPlayer);
 					DelRaopDevice(Device);
 				} else {
 					LOG_INFO("[%p]: keep missing renderer (%s)", Device, Device->FriendlyName);
@@ -650,11 +649,14 @@ static void FlushRaopDevices(void) {
 
 /*----------------------------------------------------------------------------*/
 static void DelRaopDevice(struct sMR *Device) {
+	// delete the cspot end (no call will come from this side) and context
+	spotDeletePlayer(Device->SpotPlayer);
+	raopcl_destroy(Device->Raop);
+
+	// we are a passive entity, just want to make sure nothing will send more data (artwork)
 	pthread_mutex_lock(&Device->Mutex);
 	Device->Running = false;
 	pthread_mutex_unlock(&Device->Mutex);
-	spotDeletePlayer(Device->SpotPlayer);
-	raopcl_destroy(Device->Raop);
 
 	LOG_INFO("[%p]: Raop device stopped (%s)", Device, Device->FriendlyName);
 }

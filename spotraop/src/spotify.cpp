@@ -133,6 +133,7 @@ CSpotPlayer::~CSpotPlayer() {
 
     // then just wait    
     std::scoped_lock lock(this->runningMutex);
+
     CSPOT_LOG(info, "done", name.c_str());
 }
 

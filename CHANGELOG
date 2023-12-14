@@ -1,3 +1,6 @@
+0.8.1
+ - (spotraop) fix crash upon player deletion
+ 
 0.8.0
  - change URL format for better player compatibility
  - refactor cache
