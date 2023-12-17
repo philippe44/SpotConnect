@@ -4,6 +4,7 @@
  - (spotupnp) take a 20% on content-length when estimated
  - (spotupnp) try to handle players that start by probing toward end of file to guess duration (fb2k, mp3 only)
  - (spotupnp) send accept-range even with HEAD and 416
+ - (spotupnp) -C becomes -A for consistency
  - set disc number to 0 for podcasts
   
 0.8.0
