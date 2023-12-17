@@ -211,7 +211,8 @@ void HTTPstreamer::setContentLength(int64_t contentLength) {
 
     if (!length) throw std::runtime_error("can't initialize codec");
 
-    if (contentLength == HTTP_CL_REAL) this->contentLength = abs(length);
+    // add 20% headroom when it is estimated base on known duration
+    if (contentLength == HTTP_CL_REAL) this->contentLength = length < 0 && duration ? abs(length) * 1.20 : abs(length);
     else if (contentLength == HTTP_CL_KNOWN) this->contentLength = length > 0 ? length : HTTP_CL_NONE;
     else this->contentLength = contentLength;
 }
@@ -335,7 +336,7 @@ bool HTTPstreamer::connect(int sock) {
      * for a proper range request but we need to answer 206 without a content-range (which is not 
      * compliant) or they fail as well */
 
-    // by default, use cahce and restart from oldest (might change that below)
+    // by default, use cache and restart from oldest (might change that below)
     useCache = true;
     cache->setOffset(0);
 
@@ -344,30 +345,43 @@ bool HTTPstreamer::connect(int sock) {
         size_t offset = 0;
         (void) !sscanf(it->second.c_str(), "bytes=%zu", &offset);
 
-        // first try to see if we can serve that
-        if (offset && cache->scope(offset) == 0) {
-            status = "206 Partial Content";
-            // see note above
-            if (!isSonos) response["Content-Range"] = "bytes " + std::to_string(offset) + 
-                                                      "-" + std::to_string(cache->total - 1) + "/*";
-            // do not sent content-length on PartialResponse
-            cache->setOffset(offset);
-            length = 0;
-            CSPOT_LOG(info, "service partial-content %zu-%zu", offset, cache->total - 1);
-        } else if (offset) {
-            // there is an offset out of scope, give-up
-            sendBody = false;
-            status = "416 Range Not Satisfiable";
-            response.clear();
-            response["Content-Range"] = "bytes */" + std::to_string(cache->total);
-            CSPOT_LOG(info, "can't serve offset %zu (cached:%zu)", offset, cache->total);
+        // this is not an initial request (there is cache), so if offset is 0, we are all set
+        if (offset) {
+            // first try to see if we can serve that
+            if (cache->scope(offset) == 0) {
+                status = "206 Partial Content";
+                // see note above
+                if (!isSonos) response["Content-Range"] = "bytes " + std::to_string(offset) + 
+                                                          "-" + std::to_string(cache->total - 1) + "/*";
+                // do not sent content-length on PartialResponse
+                cache->setOffset(offset);
+                length = 0;
+                CSPOT_LOG(info, "service partial-content %zu-%zu", offset, cache->total - 1);
+            } else if (state == DRAINED && offset >= cache->total) {
+                // there is an offset out of scope and we are drained, we are tapping in estimated length
+                sendBody = false;
+                status = "416 Range Not Satisfiable";
+                response.clear();
+                response["Content-Range"] = "bytes */" + std::to_string(cache->total);
+                CSPOT_LOG(info, "can't serve offset %zu (cached:%zu)", offset, cache->total);
+            } else {
+                // this likely means we are being probed toward the end of the file (which we don't have)
+                status = "206 Partial Content";
+                size_t avail = std::min(cache->total, (size_t) (length - offset));
+                cache->setOffset(cache->total - avail);
+                response["Content-Range"] = "bytes " + std::to_string(offset) +
+                    "-" + std::to_string(offset + avail - 1) + "/" + std::to_string(length);
+                CSPOT_LOG(info, "being probed at %zu but have %zu/%" PRIu64 ", using offset at %zu", offset,
+                                 cache->total, length, cache->total - avail);
+                length = 0;
+            }
         }
     } else if (cache->total) {
-        // see note above regarding Sonos
+        // restart from the beginning if we have cache (see note above regarding Sonos)
         if (isSonos) length = INT64_MAX;
         CSPOT_LOG(info, "service with cache from %zu (cached:%zu)", cache->total - cache->level(), cache->total);
     } else {
-        // normal request, don't use cache
+        // initial request, don't use cache (there is non anyway)
         useCache = false;
     }
 
@@ -378,12 +392,12 @@ bool HTTPstreamer::connect(int sock) {
     if (sendBody) {
         if (length > 0) responseStr << "Content-Length: " + std::to_string(length) + "\r\n";
         else if (isHTTP11 && length == HTTP_CL_CHUNKED) responseStr << "Transfer-Encoding: chunked\r\n";
-        responseStr << "Accept-Ranges: bytes\r\n";
     }
 
     // send accumulated headers
     for (auto it = response.cbegin(); it != response.cend(); ++it) responseStr << it->first + ": " + it->second + "\r\n";
     responseStr << "Server: spot-connect\r\n";
+    responseStr << "Accept-Ranges: bytes\r\n";
     responseStr << "Content-Type: " + encoder->mimeType + "\r\n";
     responseStr << "Connection: close\r\n";
     responseStr << "\r\n";

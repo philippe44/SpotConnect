@@ -140,14 +140,14 @@ static char usage[] =
 		   "Usage: [options]\n"
 		   "  -b <ip>[:<port>]     network interface and UPnP port to use\n"
 		   "  -a <port>[:<count>]  set inbound port and range for RTP and HTTP\n"
-		   "  -r <96|160|320>      set Spotify vorbis codec rate (160)\n"
+		   "  -r 96|160|320      set Spotify vorbis codec rate (160)\n"
 		   "  -J <path>            path to Spotify credentials files\n"
 		   "  -j  	               store Spotify credentials in XML config file\n"
 		   "  -U <user>            Spotify username\n"
 		   "  -P <password>        Spotify password\n"
 		   "  -l                   send continuous audio stream instead of separated tracks\n"
-		   "  -g <-3|-2|-1|0|<n>   HTTP content-length mode (-3:chunked(*), -2:if known, -1:none, 0:fixed, <n> your value)\n"
-		   "  -C <mode>			   HTTP caching mode (0=memory, 1=memory but claim it's infinite(*), 2=on disk)\n"		
+		   "  -g -3|-2|-1|0|<n>    HTTP content-length mode (-3:chunked(*), -2:if known, -1:none, 0:fixed, <n> your value)\n"
+		   "  -A 0|1|2		       HTTP caching mode (0=memory, 1=memory but claim it's infinite(*), 2=on disk)\n"		
 		   "  -e                   disable gapless\n"
 		   "  -u <version>         set the maximum UPnP version for search (default 1)\n"
 		   "  -N <format>          transform device name using C format (%s=name)\n"
@@ -160,7 +160,7 @@ static char usage[] =
 		   "  -n <m1,m2,...>       exclude devices whose name includes tokens\n"
 		   "  -o <m1,m2,...>       include only listed models; overrides -m and -n (use <NULL> if player don't return a model)\n"
 		   "  -d <log>=<level>     set logging level, logs: all|main|util|upnp, level: error|warn|info|debug|sdebug\n"
-		   "  -c <mp3[:<rate>]|opus[:<rate>]|vorbis[:rate]|flc[:0..9]|wav|pcm> audio format send to player (flac)\n"
+		   "  -c mp3[:<rate>]|opus[:<rate>]|vorbis[:rate]|flc[:0..9]|wav|pcm audio format send to player (flac)\n"
 
 #if LINUX || FREEBSD
 		   "  -z                   daemonize\n"
@@ -1349,7 +1349,7 @@ bool ParseArgs(int argc, char **argv) {
 
 	while (optind < argc && strlen(argv[optind]) >= 2 && argv[optind][0] == '-') {
 		char *opt = argv[optind] + 1;
-		if (strstr("abxdpifmnocugrJUPNC", opt) && optind < argc - 1) {
+		if (strstr("abxdpifmnocugrJUPNA", opt) && optind < argc - 1) {
 			optarg = argv[optind + 1];
 			optind += 2;
 		} else if (strstr("tzZIklej", opt) || opt[0] == '-') {
@@ -1361,7 +1361,7 @@ bool ParseArgs(int argc, char **argv) {
 		}
 
 		switch (opt[0]) {
-		case 'C':
+		case 'A':
 			glMRConfig.CacheMode = atoi(optarg);
 			break;
 		case 'b':

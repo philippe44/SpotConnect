@@ -43,8 +43,12 @@ public:
        int bitrate = 0;
     } opus;
     struct {
+        int bitrate = 224;
+        bool id3 = false;
+    } mp3;
+    struct {
         int bitrate = 160;
-    } mp3, vorbis, aac;
+    } vorbis, aac;
 };
 
 /* 

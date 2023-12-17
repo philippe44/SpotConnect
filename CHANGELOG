@@ -1,11 +1,17 @@
 0.8.1
  - (spotraop) fix crash upon player deletion
- 
+ - (spotupnp) fix id3 for mp3 and don't send it
+ - (spotupnp) take a 20% on content-length when estimated
+ - (spotupnp) try to handle players that start by probing toward end of file to guess duration (fb2k, mp3 only)
+ - (spotupnp) send accept-range even with HEAD and 416
+ - set disc number to 0 for podcasts
+  
 0.8.0
  - change URL format for better player compatibility
  - refactor cache
  - add -C 0/1/2 cache options
  - remove manual tweaking of protocolInfo
+ - add track and disc number
  
 0.7.0
  - HTTP header parsing regression (failed Sonos pause)

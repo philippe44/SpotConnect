@@ -322,7 +322,8 @@ int64_t flacCodec::initialize(int64_t duration) {
 
     if (!ok) throw std::runtime_error("Cannot set FLAC parameters");
 
-    return -(duration ? ((int64_t) pcmBitrate * duration * 70) / (100 * 8 * 1000) : INT64_MAX);
+    double ratio[] = { 0.8, 0.79, 0.78, 0.75, 0.72, 0.71, 0.70, 0.68, 0.65 };
+    return -(duration ? (pcmBitrate * duration * ratio[settings.flac.level]) / (8 * 1000) : INT64_MAX);
 }
 
 bool flacCodec::pcmWrite(const uint8_t* data, size_t len) {
@@ -458,17 +459,21 @@ int64_t mp3Codec::initialize(int64_t duration) {
         uint8_t  version[2];
         uint8_t	 flags;
         uint8_t  size[4];
-        uint8_t  tit[3];
-        uint8_t  titSize[3];
-        char     title[32];
+        uint8_t  tit[4];
+        uint8_t  titSize[4];
+        uint8_t  titFlags[2];
+        uint8_t  titEncoding;
+        char     title[12];
     } header) = {
             { 'I','D','3' },
             { 3, 0 },
             0, 
-            { 0, 0, 0, 38 },
-            { 'T','I','T' },
-            { 0, 0, 32 },
-            "SpotConnect",
+            { 0, 0, 0, 20 },        // see special encoding of size (4 itmes of 7 bits, b8 = 0)
+            { 'T','I','T','2'},
+            { 0, 0, 0, 10 },        // adjust to length of title
+            { 0, 0 },
+            0,                      // ISO-8859
+            "SpotUPnP",
     };
 
     // clean any current decoder 
@@ -476,7 +481,7 @@ int64_t mp3Codec::initialize(int64_t duration) {
     drained = false;
 
     // write header with no modification, just so that player thinks it's a file
-    encoded->write((uint8_t*)&header, sizeof(header));
+    if (settings.mp3.id3) encoded->write((uint8_t*)&header, sizeof(header));
 
     // create a new encoder    
     shine_config_t config;
@@ -709,8 +714,6 @@ void vorbisCodec::drain(void) {
 
     drained = true;
 }
-
-
 
 /****************************************************************************************
  * Interface that will figure out which derived class to create
