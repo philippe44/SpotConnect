@@ -111,7 +111,7 @@ private:
     std::unique_ptr<cacheBuffer> cache;
     size_t useCache;
     uint8_t scratch[32768];
-    bool flow;
+    bool flow, chunked;
     int cacheMode;
     struct {
         size_t interval, remain;

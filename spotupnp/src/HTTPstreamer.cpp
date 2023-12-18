@@ -300,14 +300,15 @@ bool HTTPstreamer::connect(int sock) {
 
     // get optional headers from whoever wants to have a say
     if (onHeaders) response = onHeaders(headers);
-    
-    bool isHTTP11 = request.find("HTTP/1.1") != std::string::npos;
-    bool sendBody = request.find("HEAD") == std::string::npos;
+
     std::string status = "200 OK";
+    chunked = request.find("HTTP/1.1") != std::string::npos && contentLength == HTTP_CL_CHUNKED;
+
+    bool sendBody = request.find("HEAD") == std::string::npos;
     bool isSonos = headers["user-agent"].find("sonos") != std::string::npos;
     // if we know the real length because it's a redo, then tell it if authorized
     int64_t length = (state == DRAINED && (contentLength >= 0 || contentLength == HTTP_CL_KNOWN)) ? totalOut : contentLength;
-
+    
     // check if icy metadata is requested
     if (auto it = headers.find("icy-metadata"); it != headers.end() && flow) {
        icy.remain = icy.interval = std::max(sizeof(scratch), (size_t) 16384);
@@ -390,11 +391,15 @@ bool HTTPstreamer::connect(int sock) {
 
     // c++ conversion to string is really a joke
     std::stringstream responseStr;
-    responseStr << (isHTTP11 ? "HTTP/1.1 " : "HTTP/1.0 ") + status + "\r\n";
+    responseStr << (chunked ? "HTTP/1.1 " : "HTTP/1.0 ") + status + "\r\n";
     
     if (sendBody) {
-        if (length > 0) responseStr << "Content-Length: " + std::to_string(length) + "\r\n";
-        else if (isHTTP11 && length == HTTP_CL_CHUNKED) responseStr << "Transfer-Encoding: chunked\r\n";
+        if (length > 0) {
+            chunked = false;
+            responseStr << "Content-Length: " + std::to_string(length) + "\r\n";
+        } else if (chunked) {
+            responseStr << "Transfer-Encoding: chunked\r\n";
+        }
     }
 
     // send accumulated headers
@@ -412,7 +417,7 @@ bool HTTPstreamer::connect(int sock) {
 }
 
 ssize_t HTTPstreamer::sendChunk(int sock, uint8_t* data, ssize_t size, bool count) {
-    if (contentLength == HTTP_CL_CHUNKED) {
+    if (chunked) {
         char chunk[16];
         sprintf(chunk, "%zx\r\n", size);
         if (send(sock, chunk, strlen(chunk), 0) < 0) return 0;
@@ -427,7 +432,7 @@ ssize_t HTTPstreamer::sendChunk(int sock, uint8_t* data, ssize_t size, bool coun
         bytes -= sent;
     }
 
-    if (contentLength == HTTP_CL_CHUNKED) {
+    if (chunked) {
         send(sock, "\r\n", 2, 0);
     }
 
@@ -568,7 +573,7 @@ void HTTPstreamer::runTask() {
 
         if (state >= DRAINING && !sent) {
            // chunked-encoding terminates by a last empty chunk ending sequence
-           if (contentLength == HTTP_CL_CHUNKED) send(sock, "0\r\n\r\n", 5, 0);
+           if (chunked) send(sock, "0\r\n\r\n", 5, 0);
 
            shutdown(sock, SHUT_RDWR);
            closesocket(sock);

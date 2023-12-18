@@ -1,3 +1,6 @@
+0.8.3
+ - chunked-encoding must an independent bool, set at the end of connect() (don't use local length either)
+ 
 0.8.2
  - (spotupnp) handle special HTTP case when range's offset is total cache
  
