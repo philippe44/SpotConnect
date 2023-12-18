@@ -1,3 +1,6 @@
+0.8.2
+ - (spotupnp) handle special HTTP case when range's offset is total cache
+ 
 0.8.1
  - (spotraop) fix crash upon player deletion
  - (spotupnp) fix id3 for mp3 and don't send it

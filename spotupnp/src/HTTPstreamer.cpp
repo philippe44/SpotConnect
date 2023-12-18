@@ -347,16 +347,19 @@ bool HTTPstreamer::connect(int sock) {
 
         // this is not an initial request (there is cache), so if offset is 0, we are all set
         if (offset) {
-            // first try to see if we can serve that
-            if (cache->scope(offset) == 0) {
+            if (state != DRAINED && cache->total == offset) {
+                // special case where we just continue so we'll do a 200 with no cache
+                useCache = false;
+            } else if (cache->scope(offset) == 0) {
+                // first try to see if we can serve that
                 status = "206 Partial Content";
                 // see note above
                 if (!isSonos) response["Content-Range"] = "bytes " + std::to_string(offset) + 
                                                           "-" + std::to_string(cache->total - 1) + "/*";
                 // do not sent content-length on PartialResponse
                 cache->setOffset(offset);
+                CSPOT_LOG(info, "service partial-content %zu-%zu (length:%" PRId64 ")", offset, cache->total - 1, length);
                 length = 0;
-                CSPOT_LOG(info, "service partial-content %zu-%zu", offset, cache->total - 1);
             } else if (state == DRAINED && offset >= cache->total) {
                 // there is an offset out of scope and we are drained, we are tapping in estimated length
                 sendBody = false;
@@ -371,7 +374,7 @@ bool HTTPstreamer::connect(int sock) {
                 cache->setOffset(cache->total - avail);
                 response["Content-Range"] = "bytes " + std::to_string(offset) +
                     "-" + std::to_string(offset + avail - 1) + "/" + std::to_string(length);
-                CSPOT_LOG(info, "being probed at %zu but have %zu/%" PRIu64 ", using offset at %zu", offset,
+                CSPOT_LOG(info, "being probed at %zu but have %zu/%" PRId64 ", using offset at %zu", offset,
                                  cache->total, length, cache->total - avail);
                 length = 0;
             }
