@@ -229,6 +229,7 @@ void HTTPstreamer::getMetadata(metadata_t* metadata) {
 }
 
 void HTTPstreamer::flush() {
+    totalOut = 0;
     state = OFF;
     cache->flush();
     encoder->flush();
@@ -575,14 +576,16 @@ void HTTPstreamer::runTask() {
            // chunked-encoding terminates by a last empty chunk ending sequence
            if (chunked) send(sock, "0\r\n\r\n", 5, 0);
 
+           CSPOT_LOG(info, "closing socket %d (sent:%zu), now lingering", sock, totalOut);
+           if (state == DRAINING && onEoS) onEoS(this);
+           state = DRAINED;      
+
            shutdown(sock, SHUT_RDWR);
            closesocket(sock);
            sock = -1;
-           if (state == DRAINING && onEoS) onEoS(this);
-           state = DRAINED;
         } else if (sent < 0) {
             // something happened in streamBody, let's close the socket and wait for next request
-            CSPOT_LOG(info, "closing socket %d (sent:%zu)", sock, totalOut);
+            CSPOT_LOG(info, "early closing socket %d (sent:%zu)", sock, totalOut);
             closesocket(sock);
             sock = -1;
         } else {

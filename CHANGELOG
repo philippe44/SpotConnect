@@ -1,3 +1,6 @@
+0.8.4 (NR)
+ - reset totalOut on flush() which is called when seeking as we don't change streamer.
+ 
 0.8.3
  - chunked-encoding must an independent bool, set at the end of connect() (don't use local length either)
  
