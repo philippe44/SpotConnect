@@ -1,5 +1,6 @@
-0.8.4 (NR)
+0.8.4
  - reset totalOut on flush() which is called when seeking as we don't change streamer.
+ - relax player deletion criteria: keep player if still download DescDoc (UPnP) or responding to ping (raop)
  
 0.8.3
  - chunked-encoding must an independent bool, set at the end of connect() (don't use local length either)

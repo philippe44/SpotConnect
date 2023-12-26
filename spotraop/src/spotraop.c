@@ -346,17 +346,22 @@ static struct sMR *SearchUDN(char *UDN) {
 
 /*----------------------------------------------------------------------------*/
 static void UpdateDevices() {
-	uint32_t now = gettime_ms();
+	uint32_t now = gettime_ms() / 1000;
 
 	pthread_mutex_lock(&glMainMutex);
 
 	// walk through the list for device whose timeout expired
 	for (int i = 0; i < MAX_RENDERERS; i++) {
 		struct sMR* Device = Device = glMRDevices + i;
-		if (!Device->Running || Device->Config.RemoveTimeout <= 0 || !Device->Expired || now < Device->Expired + Device->Config.RemoveTimeout * 1000) continue;
+		if (!Device->Running || Device->Config.RemoveTimeout <= 0 || !Device->Expired || now < Device->Expired + Device->Config.RemoveTimeout) continue;
 
-		LOG_INFO("[%p]: removing renderer (%s) on timeout", Device, Device->FriendlyName);
-		DelRaopDevice(Device);
+		if (!ping_host(Device->PlayerIP, 100)) {
+			LOG_INFO("[%p]: removing renderer (%s) on timeout", Device, Device->FriendlyName);
+			DelRaopDevice(Device);
+		} else {
+			Device->Expired = now | 0x01;
+			LOG_INFO("[%p]: %s mute to mDNS search, but answers ping, so keep it", Device, Device->FriendlyName);
+		}
 	}
 
 	pthread_mutex_unlock(&glMainMutex);
@@ -381,13 +386,13 @@ static bool mDNSsearchCallback(mdnssd_service_t *slist, void *cookie, bool *stop
 			Device->Expired = 0;
 			// device disconnected
 			if (s->expired) {
-				// since = 0 means it's a bye-bye
-				if (!raopcl_is_connected(Device->Raop) && (!Device->Config.RemoveTimeout || !s->since)) {
+				// since = 0 means it's a bye-bye and it has absolute precedence
+				if ((!raopcl_is_connected(Device->Raop) && !Device->Config.RemoveTimeout && !ping_host(s->addr, 100)) || !s->since) {
 					LOG_INFO("[%p]: removing renderer (%s)", Device, Device->FriendlyName);
 					DelRaopDevice(Device);
 				} else {
 					LOG_INFO("[%p]: keep missing renderer (%s)", Device, Device->FriendlyName);
-					Device->Expired = now ? now : 1;
+					Device->Expired = now | 0x01;
 				}
 			// device update - ignore changes in TXT
 			} else if (s->port != Device->PlayerPort || s->addr.s_addr != Device->PlayerIP.s_addr) {
