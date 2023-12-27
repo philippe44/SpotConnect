@@ -803,7 +803,7 @@ static void *UpdateThread(void *args) {
 						(Device->State == STOPPED && now - Device->LastSeen > PRESENCE_TIMEOUT))) {
 						// if device does not answer, try to download its DescDoc
 						IXML_Document* DescDoc = NULL;
-						if (UpnpDownloadXmlDoc(Update->Data, &DescDoc) != UPNP_E_SUCCESS) {
+						if (UpnpDownloadXmlDoc(Device->DescDocURL, &DescDoc) != UPNP_E_SUCCESS) {
 							pthread_mutex_lock(&Device->Mutex);
 							LOG_INFO("[%p]: removing unresponsive player (%s) with error count %d and timeout %d", Device,
 								      Device->Config.Name, Device->ErrorCount, now - Device->LastSeen);

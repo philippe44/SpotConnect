@@ -1,3 +1,6 @@
+0.8.5
+ - (spotupnp) when player timeout's, use its DescDocURL, not the UpdateData which is NULL...
+
 0.8.4
  - reset totalOut on flush() which is called when seeking as we don't change streamer.
  - relax player deletion criteria: keep player if still download DescDoc (UPnP) or responding to ping (raop)
