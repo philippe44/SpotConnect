@@ -1,3 +1,6 @@
+0.8.6
+ - (spotupnp) on error, reset counter to 0 if player responds
+ 
 0.8.5
  - (spotupnp) when player timeout's, use its DescDocURL, not the UpdateData which is NULL...
 
