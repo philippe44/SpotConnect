@@ -20,12 +20,7 @@
 /* globals */
 /*----------------------------------------------------------------------------*/
 
-extern log_level	slimproto_loglevel;
-extern log_level	stream_loglevel;
-extern log_level	decode_loglevel;
-extern log_level	output_loglevel;
 extern log_level	main_loglevel;
-extern log_level	slimmain_loglevel;
 extern log_level	util_loglevel;
 extern log_level	raop_loglevel;
 extern bool 		log_cmdline;
@@ -63,12 +58,7 @@ void SaveConfig(char *name, void *ref, bool full) {
 		common = (IXML_Node*) XMLAddNode(doc, root, "common", NULL);
 	}
 
-	XMLUpdateNode(doc, root, false, "slimproto_log", level2debug(slimproto_loglevel));
-	XMLUpdateNode(doc, root, false, "stream_log", level2debug(stream_loglevel));
-	XMLUpdateNode(doc, root, false, "output_log", level2debug(output_loglevel));
-	XMLUpdateNode(doc, root, false, "decode_log", level2debug(decode_loglevel));
 	XMLUpdateNode(doc, root, false, "main_log",level2debug(main_loglevel));
-	XMLUpdateNode(doc, root, false, "slimmain_log", level2debug(slimmain_loglevel));
 	XMLUpdateNode(doc, root, false, "raop_log",level2debug(raop_loglevel));
 	XMLUpdateNode(doc, root, false, "util_log",level2debug(util_loglevel));
 	XMLUpdateNode(doc, root, false, "log_limit", "%d", (int32_t) glLogLimit);
@@ -172,12 +162,7 @@ static void LoadGlobalItem(char *name, char *val) {
 	if (!strcmp(name, "interface")) strncpy(glInterface, val, sizeof(glInterface));
 	if (!strcmp(name, "credentials")) glCredentials = atol(val);
 	if (!strcmp(name, "credentials_path")) strncpy(glCredentialsPath, val, sizeof(glCredentialsPath) - 1);
-	if (!strcmp(name, "slimproto_log")) slimproto_loglevel = debug2level(val);
-	if (!strcmp(name, "stream_log")) stream_loglevel = debug2level(val);
-	if (!strcmp(name, "output_log")) output_loglevel = debug2level(val);
-	if (!strcmp(name, "decode_log")) decode_loglevel = debug2level(val);
 	if (!strcmp(name, "main_log")) main_loglevel = debug2level(val);
-	if (!strcmp(name, "slimmain_log")) slimmain_loglevel = debug2level(val);
 	if (!strcmp(name, "raop_log")) raop_loglevel = debug2level(val);
 	if (!strcmp(name, "util_log")) util_loglevel = debug2level(val);
 	if (!strcmp(name, "log_limit")) glLogLimit = atol(val);

@@ -58,7 +58,6 @@ bool				glCredentials;
 log_level	main_loglevel = lINFO;
 log_level	util_loglevel = lWARN;
 log_level	upnp_loglevel = lINFO;
-log_level	spot_loglevel = lINFO;
 
 tMRConfig			glMRConfig = {
 								true,			 // Enabled
@@ -140,7 +139,7 @@ static char usage[] =
 		   "Usage: [options]\n"
 		   "  -b <ip>[:<port>]     network interface and UPnP port to use\n"
 		   "  -a <port>[:<count>]  set inbound port and range for RTP and HTTP\n"
-		   "  -r 96|160|320      set Spotify vorbis codec rate (160)\n"
+		   "  -r 96|160|320        set Spotify vorbis codec rate (160)\n"
 		   "  -J <path>            path to Spotify credentials files\n"
 		   "  -j  	               store Spotify credentials in XML config file\n"
 		   "  -U <user>            Spotify username\n"
@@ -159,7 +158,9 @@ static char usage[] =
 		   "  -m <n1,n2...>        exclude devices whose model include tokens\n"
 		   "  -n <m1,m2,...>       exclude devices whose name includes tokens\n"
 		   "  -o <m1,m2,...>       include only listed models; overrides -m and -n (use <NULL> if player don't return a model)\n"
-		   "  -d <log>=<level>     set logging level, logs: all|main|util|upnp, level: error|warn|info|debug|sdebug\n"
+		   "  -d <log>=<level>     set logging level\n"
+	       "                       logs: all|main|util|upnp\n"
+		   "                       level: error|warn|info|debug|sdebug\n"
 		   "  -c mp3[:<rate>]|opus[:<rate>]|vorbis[:rate]|flc[:0..9]|wav|pcm audio format send to player (flac)\n"
 
 #if LINUX || FREEBSD
@@ -338,7 +339,7 @@ void shadowRequest(struct shadowPlayer *shadow, enum spotEvent event, ...) {
 		else MetaData = va_arg(args, metadata_t*);
 			
 		// reset these counters to avoid false rollover
-		Device->Elapsed = Device->ElapsedOffset = 0;
+		Device->Elapsed = Device->ElapsedAccrued = 0;
 
 		LOG_INFO("[%p]: spotify LOAD request", Device);
 
@@ -524,17 +525,12 @@ int ActionHandler(Upnp_EventType EventType, const void *Event, void *Cookie) {
 				p->StartCookie = p->WaitCookie;
 				_ProcessQueue(p);
 
-				/*
-				when certain waited action has been completed, the state need
-				to be re-acquired because a 'stop' state might be missed when
-				(eg) repositionning where two consecutive status update will
-				give 'playing', the 'stop' in the middle being unseen
-				*/
-				if (Resp && (!strcasecmp(Resp, "StopResponse") ||
-							 !strcasecmp(Resp, "PlayResponse") ||
-							 !strcasecmp(Resp, "PauseResponse"))) {
-					p->State = UNKNOWN;
-				}
+				/* when play action has been completed, the state need to be re-acquired because we
+				 * might have missed a state in-between. For example, while seeking there is a very
+				 * stop/play so the STOPPED state will be missed and the PLAYING event will be as
+				 * well. This should not be done for stop/pause actions otherwise we might create a fake STOPPED event state and think
+				 * we stopped when in fact it's just the re-acquisition of current state */
+				if (Resp && !strcasecmp(Resp, "PlayResponse") && p->State == PLAYING) p->State = UNKNOWN;
 
 				break;
 			}
@@ -605,7 +601,7 @@ int ActionHandler(Upnp_EventType EventType, const void *Event, void *Cookie) {
 						if (strcasecmp(p->TrackURI, r)) {
 							strncpy(p->TrackURI, r, sizeof(p->TrackURI));
 							p->TrackURI[sizeof(p->TrackURI) - 1] = '\0';
-							p->ElapsedOffset = 0;
+							p->ElapsedAccrued = 0;
 						}
 						//spotNotify(p->SpotPlayer, SHADOW_TRACK, r + p->PrefixLength);
 						spotNotify(p->SpotPlayer, SHADOW_TRACK, r);
@@ -619,14 +615,14 @@ int ActionHandler(Upnp_EventType EventType, const void *Event, void *Cookie) {
 					uint32_t Elapsed = ConvertTime(r);
 					// some players (Sonos) restart from 0 when they decode a icy metadata
 					if (p->Config.Flow && Elapsed + 15 < p->Elapsed) {
-						LOG_INFO("[%p]: detecting elapsed rollover %d / %d / %d", p, Elapsed, p->Elapsed, p->ElapsedOffset);
-						p->ElapsedOffset += p->Elapsed;
+						LOG_INFO("[%p]: detecting elapsed rollover %d / %d / %d", p, Elapsed, p->Elapsed, p->ElapsedAccrued);
+						p->ElapsedAccrued += p->Elapsed;
 						p->Elapsed = Elapsed;
 					}
 
 					/* Some player seems to send previous' track position (WX) or even backward 
 					 * position so the callee cannot really on just one call */
-					spotNotify(p->SpotPlayer, SHADOW_TIME, (Elapsed + p->ElapsedOffset) * 1000);
+					spotNotify(p->SpotPlayer, SHADOW_TIME, (Elapsed + p->ElapsedAccrued) * 1000);
 					p->Elapsed = Elapsed;
 
 					free(r);

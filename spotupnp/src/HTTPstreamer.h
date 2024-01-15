@@ -109,8 +109,8 @@ private:
     int64_t contentLength = HTTP_CL_NONE;
     std::unique_ptr<baseCodec> encoder;
     std::unique_ptr<cacheBuffer> cache;
-    size_t useCache;
-    uint8_t scratch[32768];
+    size_t useCache, scratchLen;
+    uint8_t *scratch;
     bool flow, chunked;
     int cacheMode;
     struct {

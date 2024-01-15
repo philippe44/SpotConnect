@@ -64,12 +64,7 @@ struct sMR			glMRDevices[MAX_RENDERERS];
 char				glCredentialsPath[STR_LEN];
 bool				glCredentials;
 
-log_level	slimproto_loglevel = lINFO;
-log_level	stream_loglevel = lWARN;
-log_level	decode_loglevel = lWARN;
-log_level	output_loglevel = lINFO;
 log_level	main_loglevel = lINFO;
-log_level	slimmain_loglevel = lINFO;
 log_level	util_loglevel = lINFO;
 log_level	raop_loglevel = lINFO;
 bool 		log_cmdline = false;
@@ -147,7 +142,9 @@ static char usage[] =
 		"  -m <n1,n2...>       exclude devices whose model include tokens\n"
 		"  -n <m1,m2,...>      exclude devices whose name includes tokens\n"
 		"  -o <m1,m2,...>      include only listed models; overrides -m and -n (use <NULL> if player don't return a model)\n"
-		"  -d <log>=<level>    set logging level, logs: all|main|util|upnp, level: error|warn|info|debug|sdebug\n"
+		"  -d <log>=<level>    set logging level\n"
+		"                      logs: all|main|util|raop\n"
+	    "                      level: error|warn|info|debug|sdebug\n"
 
 #if LINUX || FREEBSD || SUNOS
 		   "  -z               daemonize\n"
@@ -1159,15 +1156,10 @@ static bool ParseArgs(int argc, char **argv) {
 					if (!strcmp(v, "info"))   new = lINFO;
 					if (!strcmp(v, "debug"))  new = lDEBUG;
 					if (!strcmp(v, "sdebug")) new = lSDEBUG;
-					if (!strcmp(l, "all") || !strcmp(l, "slimproto"))	slimproto_loglevel = new;
-					if (!strcmp(l, "all") || !strcmp(l, "stream"))    	stream_loglevel = new;
-					if (!strcmp(l, "all") || !strcmp(l, "decode"))    	decode_loglevel = new;
-					if (!strcmp(l, "all") || !strcmp(l, "output"))    	output_loglevel = new;
-					if (!strcmp(l, "all") || !strcmp(l, "main"))     	main_loglevel = new;
-					if (!strcmp(l, "all") || !strcmp(l, "util"))    	util_loglevel = new;
-					if (!strcmp(l, "all") || !strcmp(l, "raop"))    	raop_loglevel = new;
-					if (!strcmp(l, "all") || !strcmp(l, "slimmain"))    slimmain_loglevel = new;				}
-				else {
+					if (!strcmp(l, "all") || !strcmp(l, "main"))  main_loglevel = new;
+					if (!strcmp(l, "all") || !strcmp(l, "util"))  util_loglevel = new;
+					if (!strcmp(l, "all") || !strcmp(l, "raop"))  raop_loglevel = new;
+				} else {
 					printf("%s", usage);
 					return false;
 				}
@@ -1186,8 +1178,7 @@ static bool ParseArgs(int argc, char **argv) {
 /*----------------------------------------------------------------------------*/
 /*																			  */
 /*----------------------------------------------------------------------------*/
-int main(int argc, char *argv[])
-{
+int main(int argc, char *argv[]) {
 	int i;
 	char resp[20] = "";
 	signal(SIGINT, sighandler);
@@ -1352,11 +1343,6 @@ int main(int argc, char *argv[])
 #endif
 #endif
 
-		SET_LOGLEVEL(stream);
-		SET_LOGLEVEL(output);
-		SET_LOGLEVEL(decode);
-		SET_LOGLEVEL(slimproto);
-		SET_LOGLEVEL(slimmain);
 		SET_LOGLEVEL(main);
 		SET_LOGLEVEL(util);
 		SET_LOGLEVEL(raop);

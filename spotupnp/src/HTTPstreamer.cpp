@@ -172,6 +172,9 @@ HTTPstreamer::HTTPstreamer(struct in_addr addr, std::string id, unsigned index, 
 
     // now estimate the content-length
     setContentLength(contentLength);
+
+    scratchLen = flow ? encoder->icyInterval : 16384;
+    scratch = new uint8_t[scratchLen];
   
     struct sockaddr_in host;
     host.sin_addr = addr;
@@ -201,6 +204,7 @@ HTTPstreamer::~HTTPstreamer() {
     isRunning = false;
     std::scoped_lock lock(runningMutex);
     if (listenSock > 0) closesocket(listenSock);
+    delete[] scratch;
     CSPOT_LOG(info, "HTTP streamer %s deleted", streamId.c_str());
 }
 
@@ -312,7 +316,7 @@ bool HTTPstreamer::connect(int sock) {
     
     // check if icy metadata is requested
     if (auto it = headers.find("icy-metadata"); it != headers.end() && flow) {
-       icy.remain = icy.interval = std::max(sizeof(scratch), (size_t) 16384);
+       icy.remain = icy.interval = std::max(scratchLen, encoder->icyInterval);
        response["icy-metaint"] = std::to_string(icy.interval);
     }
 
@@ -380,7 +384,17 @@ bool HTTPstreamer::connect(int sock) {
                                  cache->total, length, cache->total - avail);
                 length = 0;
             }
+        } else if (state == DRAINED) {
+            sendBody = false;
+            status = "410 Gone";
+            response.clear();
+            CSPOT_LOG(info, "won't resend from start when already fully served");
         }
+    } else if (state == DRAINED) {
+        sendBody = false;
+        status = "410 Gone";
+        response.clear();
+        CSPOT_LOG(info, "won't resend from start when already fully served");
     } else if (cache->total) {
         // restart from the beginning if we have cache (see note above regarding Sonos)
         if (isSonos) length = INT64_MAX;
@@ -446,13 +460,13 @@ ssize_t HTTPstreamer::streamBody(int sock, struct timeval& timeout) {
 
     // cache has priority
     if (useCache) {
-        size = cache->read(scratch, sizeof(scratch));
+        size = cache->read(scratch, scratchLen);
         if (!size) useCache = false;
     }
 
     // not using cache or empty cache, get fresh data from encoder
     if (!size) {
-        size = encoder->read(scratch, sizeof(scratch), 0, state == DRAINING);
+        size = encoder->read(scratch, scratchLen, 0, state == DRAINING);
         // cache what we have anyway
         cache->write(scratch, size);
     }

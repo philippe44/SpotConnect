@@ -1,3 +1,14 @@
+0.9.0
+ - (spotupnp) scratch is dynamically allocated
+ - (spotupnp) on flow, allow icy with all codecs as long as player wants it (and user allowed)
+ - (spotupnp) only re-acquire state on play action completion. This is not needed on stop/pause and will create issues like fake stops
+ - (spotupnp) HTTP won't restart from 0 when fully served (case of Sonos asking the same track when no nextURI has been set already)
+ - (spotraop) clean config entries (a few remains from squeeze2raop)
+ 
+0.8.7
+ - fix loglevels
+ - 'soptraop) update version number
+ 
 0.8.6
  - (spotupnp) on error, reset counter to 0 if player responds
  

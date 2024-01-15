@@ -21,7 +21,7 @@
 #include "metadata.h"
 #include "spotify.h"
 
-#define VERSION "v0.8.6"" ("__DATE__" @ "__TIME__")"
+#define VERSION "v0.9.0"" ("__DATE__" @ "__TIME__")"
 
 /*----------------------------------------------------------------------------*/
 /* typedefs */
@@ -77,7 +77,7 @@ struct sMR {
 	struct spotPlayer *SpotPlayer;
 	metadata_t		MetaData;
 	enum spotEvent	SpotState;
-	uint32_t		Elapsed, ElapsedOffset;
+	uint32_t		Elapsed, ElapsedAccrued;
 	uint32_t		LastSeen;
 	uint8_t			*seqN;
 	void			*WaitCookie, *StartCookie, *LastCookie;

@@ -71,6 +71,7 @@ protected:
 
 public:
     std::string mimeType;
+    size_t icyInterval;
 
     baseCodec(codecSettings settings, std::string mimeType, bool store = false);
     virtual ~baseCodec(void) { }

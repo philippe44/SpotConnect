@@ -122,6 +122,7 @@ baseCodec::baseCodec(codecSettings settings, std::string mimeType, bool store) :
         storage = fopen(name.c_str(), "wb");
     }
 
+    icyInterval = 16 * 1024;
     pcmBitrate = settings.rate * settings.channels * settings.size * 8;
     pcm = std::make_shared<byteBuffer>(storage);
     encoded = pcm;
@@ -174,6 +175,7 @@ public:
 
 pcmCodec::pcmCodec(codecSettings settings, bool store) :
                    baseCodec(settings, "audio/L16;rate=44100;channels=2", store) {
+    icyInterval = 128 * 1024;
     mimeType = "audio/L" + std::to_string(settings.size * 8) + ";rate=" + std::to_string(settings.rate) +
                ";channels=" + std::to_string(settings.channels);
 }
@@ -223,7 +225,7 @@ private:
     size_t position = 0;
 
 public:
-    wavCodec(codecSettings settings, bool store = false) : baseCodec(settings, "audio/wav", store) { }
+    wavCodec(codecSettings settings, bool store = false) : baseCodec(settings, "audio/wav", store) { icyInterval = 128 * 1024; }
     virtual int64_t initialize(int64_t duration);
 };
 
@@ -287,7 +289,7 @@ private:
     bool drained = false;
 
 public:
-    flacCodec(codecSettings settings, bool store = false) : baseCodec(settings, "audio/flac", store) { }
+    flacCodec(codecSettings settings, bool store = false) : baseCodec(settings, "audio/flac", store) { icyInterval = 128 * 1024; }
     virtual ~flacCodec(void);
     virtual int64_t initialize(int64_t duration);
     virtual bool pcmWrite(const uint8_t* data, size_t size);
