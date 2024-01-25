@@ -12,6 +12,7 @@
 #include <signal.h>
 #include <stdarg.h>
 #include <stdio.h>
+#include <locale.h>
 
 #include "pthread.h"
 #include "upnp.h"
@@ -21,7 +22,7 @@
 #include "metadata.h"
 #include "spotify.h"
 
-#define VERSION "v0.9.0"" ("__DATE__" @ "__TIME__")"
+#define VERSION "v0.9.1"" ("__DATE__" @ "__TIME__")"
 
 /*----------------------------------------------------------------------------*/
 /* typedefs */

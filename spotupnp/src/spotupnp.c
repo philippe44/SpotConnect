@@ -231,7 +231,7 @@ static void *MRThread(void *args) {
 		// context is valid as long as thread runs
 		pthread_mutex_lock(&p->Mutex);
 
-		wakeTimer = (p->State != STOPPED) ? MIN_POLL : MIN_POLL * 10;
+		wakeTimer = (p->State != STOPPED) ? MIN_POLL / 2: MIN_POLL * 10;
 		LOG_SDEBUG("[%p]: UPnP thread timer %d %d", p, elapsed, wakeTimer);
 
 		p->StatePoll += elapsed;
@@ -242,18 +242,15 @@ static void *MRThread(void *args) {
 		if (p->Master || (p->SpotState != SPOT_PLAY && p->State == STOPPED) ||
 			p->ErrorCount < 0 || p->ErrorCount > MAX_ACTION_ERRORS || p->WaitCookie) goto sleep;
 
-		// get track position & CurrentURI
-		if (p->TrackPoll > TRACK_POLL) {
-			p->TrackPoll = 0;
-			if (p->State != STOPPED && p->State != PAUSED) {
-				AVTCallAction(p, "GetPositionInfo", p->seqN++);
-			}
-		}
-
-		// do polling as event is broken in many uPNP devices
+		// do polling as event is broken in many uPNP devices (not synchronously)
 		if (p->StatePoll > STATE_POLL) {
+			// get state first (PLAYING, STOPPED)
 			p->StatePoll = 0;
 			AVTCallAction(p, "GetTransportInfo", p->seqN++);
+		} else if (p->TrackPoll > TRACK_POLL) {
+			// get track position & CurrentURI
+			p->TrackPoll = 0;
+			if (p->State != STOPPED && p->State != PAUSED) AVTCallAction(p, "GetPositionInfo", p->seqN++);
 		}
 
 sleep:
@@ -1489,6 +1486,9 @@ int main(int argc, char *argv[]) {
 #if defined(SIGPIPE)
 	signal(SIGPIPE, SIG_IGN);
 #endif
+
+	// otherwise some atof/strtod fail with '.'
+	setlocale(LC_NUMERIC, "C");
 
 	netsock_init();
 

@@ -1193,6 +1193,9 @@ int main(int argc, char *argv[]) {
 	signal(SIGHUP, sighandler);
 #endif
 
+	// otherwise some atof/strtod fail with '.'
+	setlocale(LC_NUMERIC, "C");
+
 	netsock_init();
 
 	// first try to find a config file on the command line
