@@ -20,8 +20,8 @@ jobs:
         uses: actions/upload-artifact@v3
         with:
           name: repo.zip
-          path: .
-          exclude: |
-            README.md
-            directory1/
-    
+          path: |
+            .         
+            !README.md
+            !*.zip
+            
