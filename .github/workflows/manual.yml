@@ -21,7 +21,9 @@ jobs:
         with:
           name: repo.zip
           path: |
-            .         
+            common\
+            spotraop\
+            spotupnp\
             !README.md
             !*.zip
             
