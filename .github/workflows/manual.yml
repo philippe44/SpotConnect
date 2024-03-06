@@ -1,0 +1,29 @@
+# This is a basic workflow that is manually triggered
+
+name: Manual workflow
+
+# Controls when the action will run. Workflow runs when manually triggered using the UI
+# or API.
+on:
+  workflow_dispatch:
+    
+# A workflow run is made up of one or more jobs that can run sequentially or in parallel
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        
+      - name: ZIP archive  
+        uses: actions/upload-artifact@v3
+        with:
+          name: repo.zip
+          path: |
+            common
+            spotraop
+            spotupnp
+            !README.md
+            !*.zip
+            
