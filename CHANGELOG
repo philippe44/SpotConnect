@@ -1,5 +1,7 @@
 0.9.2
  - (spotraop) force webserver to bind to defined ports
+ - (spotraop) fix exec_request exiting on wrong beyond-first header 
+ - (spotupnp) log potential incorrect/early notify calls
  
 0.9.1
  - UpnpResolveURL needs one extra byte if RelURL parameters does not start with a '/'
