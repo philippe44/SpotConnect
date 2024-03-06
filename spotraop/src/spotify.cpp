@@ -30,6 +30,7 @@
 #include "protobuf/metadata.pb.h"
 extern "C" {
 #include "cross_util.h"
+#include "cross_net.h"
 #include "raop_client.h"
 }
 
@@ -357,10 +358,32 @@ void notify(CSpotPlayer* self, enum shadowEvent event, va_list args) {
 }
 
 void CSpotPlayer::enableZeroConf(void) {
-    int serverPort = 0;
-    server = std::make_unique<bell::BellHTTPServer>(serverPort);
-    serverPort = server->getListeningPorts()[0];
+    unsigned short serverPort = 0;
+    int sock = -1;
 
+    // try to find a port in range
+    for (int range = portRange, count = 0, offset = rand(); portBase && count < range && sock < 0; count++, offset++) {
+        serverPort = portBase + (offset % range);
+        sock = bind_socket(addr, &serverPort, SOCK_STREAM);
+    }
+
+    /* Seems that we cannot just get a socket and let CivetWeb bind to it as
+     * well with any OS. For Windows, there is an attempt to take exclusive 
+     * use anyway (security issue) but in Linux it fails although REUSEADDR
+     * is called. So anyway, we try our luck hoping that this port will not 
+     * be taken right away... */
+    
+    if (sock < 0) serverPort = 0;
+    else closesocket(sock);
+
+    try {
+        server = std::make_unique<bell::BellHTTPServer>(serverPort);
+    } catch (...) {
+        CSPOT_LOG(error, "Port reservation failed");
+        server = std::make_unique<bell::BellHTTPServer>(0);
+    }
+
+    serverPort = server->getListeningPorts()[0];
     CSPOT_LOG(info, "ZeroConf mode (port %d)", serverPort);
 
     server->registerGet("/spotify_info", [this](struct mg_connection* conn) {

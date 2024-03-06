@@ -852,7 +852,7 @@ static void StartActiveRemote(struct in_addr host) {
 			closesocket(glActiveRemoteSock);
 			return;
 		}
-	};
+	}
 
 	getsockname(glActiveRemoteSock, (struct sockaddr *) &addr, &nlen);
 	uint16_t port = ntohs(addr.sin_port);

@@ -413,6 +413,12 @@ void CSpotPlayer::trackHandler(std::string_view trackUnique) {
 
 // this is called with shared mutex locked
 void notify(CSpotPlayer *self, enum shadowEvent event, va_list args) {
+    // should not happen, but at least trace it
+    if (!self) {
+        CSPOT_LOG(error, "shadow event %d for NULL", event);
+        return;
+    }
+
     // volume can be handled at anytime
     if (event == SHADOW_VOLUME) {
         int volume = va_arg(args, int);
