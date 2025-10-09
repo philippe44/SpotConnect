@@ -20,7 +20,7 @@
 #include "cross_util.h"
 #include "spotify.h"
 
-#define VERSION "v0.10.0" " (" __DATE__ " @ " __TIME__ ")"
+#define VERSION "v0.10.1" " (" __DATE__ " @ " __TIME__ ")"
 
 /*----------------------------------------------------------------------------*/
 /* typedefs */
