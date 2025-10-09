@@ -157,7 +157,7 @@ if(NOT CMAKE_SYSTEM_NAME STREQUAL "SunOS")
     target_link_libraries(${PROJECT}-static PUBLIC ${EXTRA_LIBS} cspot libraop)    
     # dl must be repeated after openssl
     if(MSVC)
-        target_link_libraries(${PROJECT}-static PUBLIC ${BASE}/spotraop/libopenssl/targets/${HOST}/${PLATFORM}/libopenssl_static${LIBRARY_SUFFIX})
+        target_link_libraries(${PROJECT}-static PUBLIC ${BASE}/spotraop/libopenssl/targets/${HOST}/${PLATFORM}/libopenssl_static${LIBRARY_SUFFIX} crypt32.lib)
     else()
         target_link_libraries(${PROJECT}-static PUBLIC ${BASE}/spotraop/libopenssl/targets/${HOST}/${PLATFORM}/libopenssl${LIBRARY_SUFFIX})
         target_link_libraries(${PROJECT}-static PUBLIC dl)    
