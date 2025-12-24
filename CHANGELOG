@@ -1,3 +1,6 @@
+0.20.1
+ - add missing builds
+ 
 0.20.0
  - Don't use WebAPI client_id anymore
  
