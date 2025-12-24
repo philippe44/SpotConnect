@@ -1,3 +1,6 @@
+0.20.0
+ - Don't use WebAPI client_id anymore
+ 
 0.10.1
  - forgot to update libraop
  

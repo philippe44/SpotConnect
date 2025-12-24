@@ -44,6 +44,8 @@
 #include "metadata.h"
 #include "spotify.h"
 
+#include "client_info.h"
+
 #define FRAMES_PER_BLOCK DEFAULT_FRAMES_PER_CHUNK
 #define DISCOVERY_TIME	 60
 
@@ -63,6 +65,7 @@ char				glExcludedNames[STR_LEN];
 struct sMR			glMRDevices[MAX_RENDERERS];
 char				glCredentialsPath[STR_LEN];
 bool				glCredentials;
+char				glClientId[STR_LEN], glClientSecret[STR_LEN];
 
 log_level	main_loglevel = lINFO;
 log_level	util_loglevel = lINFO;
@@ -129,6 +132,8 @@ static char usage[] =
 		"  -j  	               store Spotify credentials in XML config file\n"
 		"  -U <user>           Spotify username\n"
 		"  -P <password>       Spotify password\n"
+		"  -D <client_id>	   Spotify Client's id\n"
+		"  -S <client_secret>  Spotify Client's secret\n"
 	    "  -L                  set AirPlay player password\n"
 		"  -c <alac|pcm>       audio format send to player (alac)\n"
 		"  -r <96|160|320>     set Spotify vorbis codec rate (160)\n"
@@ -425,7 +430,7 @@ static bool mDNSsearchCallback(mdnssd_service_t *slist, void *cookie, bool *stop
 			char id[6 * 2 + 1] = { 0 };
 			for (int i = 0; i < 6; i++) sprintf(id + i * 2, "%02x", Device->Config.MAC[i]);
 			if (!*(Device->Config.Name)) sprintf(Device->Config.Name, glNameFormat, Device->FriendlyName);
-			Device->SpotPlayer = spotCreatePlayer(Device->Config.Name, id, Device->Credentials, glHost, Device->Config.VorbisRate, 
+			Device->SpotPlayer = spotCreatePlayer(glClientId, glClientSecret, Device->Config.Name, id, Device->Credentials, glHost, Device->Config.VorbisRate, 
 												  FRAMES_PER_BLOCK, Device->Config.ReadAhead, (struct shadowPlayer*)Device);
 			glUpdated = true;
 		}
@@ -1062,7 +1067,7 @@ static bool ParseArgs(int argc, char **argv) {
 	}
 	while (optind < argc && strlen(argv[optind]) >= 2 && argv[optind][0] == '-') {
 		char *opt = argv[optind] + 1;
-		if (strstr("abcrxifpmnodJUPN", opt) && optind < argc - 1) {
+		if (strstr("abcrxifpmnodJUPNDS", opt) && optind < argc - 1) {
 			optarg = argv[optind + 1];
 			optind += 2;
 		} else if (strstr("tzZIkljL"
@@ -1132,6 +1137,12 @@ static bool ParseArgs(int argc, char **argv) {
 			break;
 		case 'j':
 			glCredentials = true;
+			break;
+		case 'D':
+			strncpy(glClientId, optarg, sizeof(glClientId) - 1);
+			break;
+		case 'S':
+			strncpy(glClientSecret, optarg, sizeof(glClientSecret) - 1);
 			break;
 		case 'U':
 			glSpotifyUserName = optarg;
@@ -1204,6 +1215,10 @@ int main(int argc, char *argv[]) {
 			strcpy(glConfigName, argv[i+1]);
 		}
 	}
+
+	// set built-in id and secret
+	strcpy(glClientId, CLIENT_ID);
+	strcpy(glClientSecret, CLIENT_SECRET);
 
 	// load config from xml file
 	glConfigID = (void*) LoadConfig(glConfigName, &glMRConfig);

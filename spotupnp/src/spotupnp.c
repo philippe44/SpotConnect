@@ -28,6 +28,8 @@
 #include "mr_util.h"
 #include "spotify.h"
 
+#include "client_info.h"
+
 #define	AV_TRANSPORT 			"urn:schemas-upnp-org:service:AVTransport"
 #define	RENDERING_CTRL 			"urn:schemas-upnp-org:service:RenderingControl"
 #define	CONNECTION_MGR 			"urn:schemas-upnp-org:service:ConnectionManager"
@@ -54,6 +56,7 @@ uint16_t			glPortBase, glPortRange;
 char				glInterface[128] = "?";
 char				glCredentialsPath[STR_LEN];
 bool				glCredentials;
+char				glClientId[STR_LEN], glClientSecret[STR_LEN];
 
 log_level	main_loglevel = lINFO;
 log_level	util_loglevel = lWARN;
@@ -144,6 +147,8 @@ static char usage[] =
 		   "  -j  	               store Spotify credentials in XML config file\n"
 		   "  -U <user>            Spotify username\n"
 		   "  -P <password>        Spotify password\n"
+		   "  -D <client_id>	   Spotify Client's id\n"
+		   "  -S <client_secret>   Spotify Client's secret\n"
 		   "  -l                   send continuous audio stream instead of separated tracks\n"
 		   "  -g -3|-2|-1|0|<n>    HTTP content-length mode (-3:chunked(*), -2:if known, -1:none, 0:fixed, <n> your value)\n"
 		   "  -A 0|1|2		       HTTP caching mode (0=memory, 1=memory but claim it's infinite(*), 2=on disk)\n"		
@@ -875,7 +880,7 @@ static void *UpdateThread(void *args) {
 							Device->Master = NULL;
 							char id[6 * 2 + 1] = { 0 };
 							for (int i = 0; i < 6; i++) sprintf(id + i * 2, "%02x", Device->Config.mac[i]);
-							Device->SpotPlayer = spotCreatePlayer(Device->Config.Name, id, Device->Credentials, glHost, Device->Config.VorbisRate,
+							Device->SpotPlayer = spotCreatePlayer(glClientId, glClientSecret, Device->Config.Name, id, Device->Credentials, glHost, Device->Config.VorbisRate,
 																  Device->Config.Codec, Device->Config.Flow, Device->Config.HTTPContentLength, 
 																  Device->Config.CacheMode, (struct shadowPlayer*) Device, &Device->Mutex);
 							pthread_mutex_unlock(&Device->Mutex);
@@ -930,7 +935,7 @@ static void *UpdateThread(void *args) {
 					// create a new Spotify Connect device
 					char id[6*2+1] = { 0 };
 					for (int i = 0; i < 6; i++) sprintf(id + i*2, "%02x", Device->Config.mac[i]);
-					Device->SpotPlayer = spotCreatePlayer(Device->Config.Name, id, Device->Credentials, glHost, Device->Config.VorbisRate,
+					Device->SpotPlayer = spotCreatePlayer(glClientId, glClientSecret, Device->Config.Name, id, Device->Credentials, glHost, Device->Config.VorbisRate,
 														  Device->Config.Codec, Device->Config.Flow, Device->Config.HTTPContentLength, 
 														  Device->Config.CacheMode, (struct shadowPlayer*) Device, &Device->Mutex);
 					if (!Device->SpotPlayer) {
@@ -1350,7 +1355,7 @@ bool ParseArgs(int argc, char **argv) {
 
 	while (optind < argc && strlen(argv[optind]) >= 2 && argv[optind][0] == '-') {
 		char *opt = argv[optind] + 1;
-		if (strstr("abxdpifmnocugrJUPNA", opt) && optind < argc - 1) {
+		if (strstr("abxdpifmnocugrJUPNADS", opt) && optind < argc - 1) {
 			optarg = argv[optind + 1];
 			optind += 2;
 		} else if (strstr("tzZIklej", opt) || opt[0] == '-') {
@@ -1394,6 +1399,12 @@ bool ParseArgs(int argc, char **argv) {
 			break;
 		case 'N':
 			glNameFormat = optarg;
+			break;
+		case 'D':
+			strncpy(glClientId, optarg, sizeof(glClientId) - 1);
+			break;
+		case 'S':
+			strncpy(glClientSecret, optarg, sizeof(glClientSecret) - 1);
 			break;
 		case 'i':
 			strcpy(glConfigName, optarg);
@@ -1498,6 +1509,10 @@ int main(int argc, char *argv[]) {
 			strcpy(glConfigName, argv[i+1]);
 		}
 	}
+
+	// set built-in id and secret
+	strcpy(glClientId, CLIENT_ID);
+	strcpy(glClientSecret, CLIENT_SECRET);
 
 	// load config from xml file
 	glConfigID = (void*) LoadConfig(glConfigName, &glMRConfig);

@@ -67,6 +67,8 @@ void SaveConfig(char *name, void *ref, bool full) {
 	XMLUpdateNode(doc, root, false, "ports", "%hu:%hu", glPortBase, glPortRange);
 	XMLUpdateNode(doc, root, false, "credentials_path", glCredentialsPath);
 	XMLUpdateNode(doc, root, false, "credentials", "%d", glCredentials);
+	XMLUpdateNode(doc, root, false, "client_id", glClientId);
+	XMLUpdateNode(doc, root, false, "client_secret", glClientSecret);
 
 	XMLUpdateNode(doc, common, false, "enabled", "%d", (int) glMRConfig.Enabled);
 	XMLUpdateNode(doc, common, false, "volume_feedback", "%d", (int) glMRConfig.VolumeFeedback);
@@ -162,6 +164,8 @@ static void LoadGlobalItem(char *name, char *val) {
 	if (!strcmp(name, "interface")) strncpy(glInterface, val, sizeof(glInterface));
 	if (!strcmp(name, "credentials")) glCredentials = atol(val);
 	if (!strcmp(name, "credentials_path")) strncpy(glCredentialsPath, val, sizeof(glCredentialsPath) - 1);
+	if (!strcmp(name, "client_id")) strncpy(glClientId, val, sizeof(glClientId) - 1);
+	if (!strcmp(name, "client_secret")) strncpy(glClientSecret, val, sizeof(glClientSecret) - 1);
 	if (!strcmp(name, "main_log")) main_loglevel = debug2level(val);
 	if (!strcmp(name, "raop_log")) raop_loglevel = debug2level(val);
 	if (!strcmp(name, "util_log")) util_loglevel = debug2level(val);

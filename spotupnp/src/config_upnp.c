@@ -59,6 +59,8 @@ void SaveConfig(char *name, void *ref, bool full) {
 	XMLUpdateNode(doc, root, false, "interface", glInterface);
 	XMLUpdateNode(doc, root, false, "credentials_path", glCredentialsPath);
 	XMLUpdateNode(doc, root, false, "credentials", "%d", glCredentials);
+	XMLUpdateNode(doc, root, false, "client_id", glClientId);
+	XMLUpdateNode(doc, root, false, "client_secret", glClientSecret);
 	XMLUpdateNode(doc, root, false, "ports", "%hu:%hu", glPortBase, glPortRange);
 
 	XMLUpdateNode(doc, common, false, "enabled", "%d", (int) glMRConfig.Enabled);
@@ -159,6 +161,8 @@ static void LoadGlobalItem(char *name, char *val) {
 	if (!strcmp(name, "ports")) sscanf(val, "%hu:%hu", &glPortBase, &glPortRange);
 	if (!strcmp(name, "credentials")) glCredentials = atol(val);
 	if (!strcmp(name, "credentials_path")) strncpy(glCredentialsPath, val, sizeof(glCredentialsPath) - 1);
+	if (!strcmp(name, "client_id")) strncpy(glClientId, val, sizeof(glClientId) - 1);
+	if (!strcmp(name, "client_secret")) strncpy(glClientSecret, val, sizeof(glClientSecret) - 1);
  }
 
 /*----------------------------------------------------------------------------*/

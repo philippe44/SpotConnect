@@ -55,6 +55,7 @@ private:
     std::atomic<states> state;
        
     std::string name;
+    std::string clientId, clientSecret;
     struct in_addr addr;
     AudioFormat format;
     int volume = 0;
@@ -91,17 +92,17 @@ public:
     inline static uint16_t portBase = 0, portRange = 1;
     inline static std::string username = "", password = "";
 
-    CSpotPlayer(char* name, char* id, char *credentials, struct in_addr addr, AudioFormat audio, 
+    CSpotPlayer(char* clientId, char* clientSecret, char* name, char* id, char *credentials, struct in_addr addr, AudioFormat audio, 
                 size_t frameSize, uint32_t delay, struct shadowPlayer* shadow);
     ~CSpotPlayer();
     void disconnect(bool abort = false);
     void friend notify(CSpotPlayer *self, enum shadowEvent event, va_list args);
 };
 
-CSpotPlayer::CSpotPlayer(char* name, char* id, char *credentials, struct in_addr addr, AudioFormat format, 
+CSpotPlayer::CSpotPlayer(char *clientId, char* clientSecret, char* name, char* id, char *credentials, struct in_addr addr, AudioFormat format, 
                          size_t frameSize, uint32_t delay, struct shadowPlayer* shadow) 
             : bell::Task("playerInstance", 48 * 1024, 0, 0), 
-            clientConnected(1), addr(addr), name(name), credentials(credentials), 
+            clientConnected(1), addr(addr), clientId(clientId), clientSecret(clientSecret), name(name), credentials(credentials), 
             shadow(shadow), frameSize(frameSize), delay(delay), format(format) {
     this->raopClient = shadowRaop(shadow);
 }
@@ -430,6 +431,8 @@ void CSpotPlayer::runTask() {
 
         auto ctx = cspot::Context::createFromBlob(blob);
         ctx->config.audioFormat = format;
+        ctx->config.clientId = clientId;
+        ctx->config.clientSecret = clientSecret;
 
         // seems that mbedtls can catch error that are not fatal, so we should continue
         try {
@@ -562,13 +565,13 @@ void spotClose(void) {
     delete bell::bellGlobalLogger;
 }
 
-struct spotPlayer* spotCreatePlayer(char* name, char *id, char *credentials, struct in_addr addr, int oggRate, size_t frameSize, uint32_t delay, struct shadowPlayer* shadow) {
+struct spotPlayer* spotCreatePlayer(char* clientId, char* clientSecret, char* name, char *id, char *credentials, struct in_addr addr, int oggRate, size_t frameSize, uint32_t delay, struct shadowPlayer* shadow) {
     AudioFormat format = AudioFormat_OGG_VORBIS_160;
 
     if (oggRate == 320) format = AudioFormat_OGG_VORBIS_320;
     else if (oggRate == 96) format = AudioFormat_OGG_VORBIS_96;
 
-    auto player = new CSpotPlayer(name, id, credentials, addr, format, frameSize, delay, shadow);
+    auto player = new CSpotPlayer(clientId, clientSecret, name, id, credentials, addr, format, frameSize, delay, shadow);
     if (player->startTask()) return (struct spotPlayer*) player;
 
     delete player;

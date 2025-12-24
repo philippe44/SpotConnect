@@ -27,7 +27,7 @@ struct raopcl_s;
 struct raopcl_s*	shadowRaop(struct shadowPlayer* shadow);
 void				shadowRequest(struct shadowPlayer* shadow, enum spotEvent event, ...);
 
-struct spotPlayer* spotCreatePlayer(char* name, char* id, char *credentials, struct in_addr addr, int audio, 
+struct spotPlayer* spotCreatePlayer(char* clientId, char*clientSecret, char* name, char* id, char *credentials, struct in_addr addr, int audio, 
 									size_t frameSize, uint32_t delay, struct shadowPlayer* shadow);
 void spotDeletePlayer(struct spotPlayer *spotPlayer);
 void spotOpen(uint16_t portBase, uint16_t portRange, char* username, char* password);

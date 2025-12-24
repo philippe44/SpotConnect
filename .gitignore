@@ -52,3 +52,6 @@ spotconnect*.zip
 # Added files
 !build.cmd
 !build.sh
+client_info.h
+
+Spot*.zip

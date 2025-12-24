@@ -93,6 +93,7 @@ private:
     unsigned index = 0;
 
     std::string codec, id;
+    std::string clientId, clientSecret;
     struct in_addr addr;
     AudioFormat format;
     int64_t contentLength;
@@ -122,7 +123,7 @@ private:
 public:
     inline static std::string username = "", password = "";
 
-    CSpotPlayer(char* name, char* id, char *credentials, struct in_addr addr, AudioFormat audio, char* codec, bool flow,
+    CSpotPlayer(char *clientId, char *clientSecret, char* name, char* id, char *credentials, struct in_addr addr, AudioFormat audio, char* codec, bool flow,
         int64_t contentLength, int cacheMode, struct shadowPlayer* shadow, pthread_mutex_t* mutex);
     ~CSpotPlayer();
     void disconnect(bool abort = false);
@@ -131,11 +132,11 @@ public:
     bool friend getMetaForUrl(CSpotPlayer* self, const std::string url, metadata_t* metadata);
 };
 
-CSpotPlayer::CSpotPlayer(char* name, char* id, char *credentials, struct in_addr addr, AudioFormat format, char* codec, bool flow,
+CSpotPlayer::CSpotPlayer(char *clientId, char* clientSecret, char* name, char* id, char *credentials, struct in_addr addr, AudioFormat format, char* codec, bool flow,
     int64_t contentLength, int cacheMode, struct shadowPlayer* shadow, pthread_mutex_t* mutex) : bell::Task("playerInstance",
         48 * 1024, 0, 0),
     clientConnected(1), codec(codec), id(id), addr(addr), flow(flow),
-    name(name), credentials(credentials), format(format), shadow(shadow), 
+    clientId(clientId), clientSecret(clientSecret), name(name), credentials(credentials), format(format), shadow(shadow), 
     playerMutex(mutex), cacheMode(cacheMode) {
     this->contentLength = (flow && contentLength == HTTP_CL_REAL) ? HTTP_CL_NONE : contentLength;
 }
@@ -582,6 +583,8 @@ void CSpotPlayer::runTask() {
 
         auto ctx = cspot::Context::createFromBlob(blob);
         ctx->config.audioFormat = format;
+        ctx->config.clientId = clientId;
+        ctx->config.clientSecret = clientSecret;
 
         // seems that mbedtls can catch error that are not fatal, so we should continue
         try {
@@ -654,7 +657,7 @@ void spotClose(void) {
     delete bell::bellGlobalLogger;
 }
 
-struct spotPlayer* spotCreatePlayer(char* name, char *id, char * credentials, struct in_addr addr, int oggRate, 
+struct spotPlayer* spotCreatePlayer(char *client_id, char* client_secret, char* name, char *id, char * credentials, struct in_addr addr, int oggRate, 
                                         char *codec, bool flow, int64_t contentLength, int CacheMode, 
                                         struct shadowPlayer* shadow, pthread_mutex_t *mutex) {
     AudioFormat format = AudioFormat_OGG_VORBIS_160;
@@ -662,7 +665,7 @@ struct spotPlayer* spotCreatePlayer(char* name, char *id, char * credentials, st
     if (oggRate == 320) format = AudioFormat_OGG_VORBIS_320;
     else if (oggRate == 96) format = AudioFormat_OGG_VORBIS_96;
 
-    auto player = new CSpotPlayer(name, id, credentials, addr, format, codec, flow, contentLength, CacheMode, shadow, mutex);
+    auto player = new CSpotPlayer(client_id, client_secret, name, id, credentials, addr, format, codec, flow, contentLength, CacheMode, shadow, mutex);
     if (player->startTask()) return (struct spotPlayer*) player;
 
     delete player;

@@ -160,7 +160,7 @@ if(NOT CMAKE_SYSTEM_NAME STREQUAL "SunOS")
         target_link_libraries(${PROJECT}-static PUBLIC ${BASE}/spotraop/libopenssl/targets/${HOST}/${PLATFORM}/libopenssl_static${LIBRARY_SUFFIX} crypt32.lib)
     else()
         target_link_libraries(${PROJECT}-static PUBLIC ${BASE}/spotraop/libopenssl/targets/${HOST}/${PLATFORM}/libopenssl${LIBRARY_SUFFIX})
-        target_link_libraries(${PROJECT}-static PUBLIC dl)    
+        target_link_libraries(${PROJECT}-static PUBLIC dl)
     endif()
 endif()
 

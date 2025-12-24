@@ -22,7 +22,7 @@
 #include "metadata.h"
 #include "spotify.h"
 
-#define VERSION "v0.10.1"" ("__DATE__" @ "__TIME__")"
+#define VERSION "v0.20.0"" ("__DATE__" @ "__TIME__")"
 
 /*----------------------------------------------------------------------------*/
 /* typedefs */
@@ -108,6 +108,7 @@ extern char					glInterface[128];
 extern unsigned short		glPortBase, glPortRange;
 extern char					glCredentialsPath[STR_LEN];
 extern bool					glCredentials;
+extern char					glClientId[STR_LEN], glClientSecret[STR_LEN];
 
 int MasterHandler(Upnp_EventType EventType, const void *Event, void *Cookie);
 int ActionHandler(Upnp_EventType EventType, const void *Event, void *Cookie);

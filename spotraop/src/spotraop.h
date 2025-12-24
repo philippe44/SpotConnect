@@ -20,7 +20,7 @@
 #include "cross_util.h"
 #include "spotify.h"
 
-#define VERSION "v0.10.1" " (" __DATE__ " @ " __TIME__ ")"
+#define VERSION "v0.20.0" " (" __DATE__ " @ " __TIME__ ")"
 
 /*----------------------------------------------------------------------------*/
 /* typedefs */
@@ -90,6 +90,7 @@ extern char					glExcluded[STR_LEN];
 extern uint16_t				glPortBase, glPortRange;
 extern char					glCredentialsPath[STR_LEN];
 extern bool					glCredentials;
+extern char					glClientId[STR_LEN], glClientSecret[STR_LEN];
 
 #ifdef __cplusplus
 extern "C" {
