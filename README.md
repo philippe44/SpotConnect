@@ -9,6 +9,9 @@ For AirPlay, the audio can be re-encoded using ALAC or left as raw PCM. Note tha
 
 **Please read carefully the [credentials](#credentials) paragraph to understand how to handle Spotify credentials**
 
+**Update 24/12/2025**
+Spotify has closed some of the WebAPI access, you now need a dedicated application (client) ID and Secret. These are built-in in the binary but not accessible in the source code for obvious reasons. Now, you can use yours either on the command line (-D -S) or in the config file (`<client_id`> and `<client_secret`>. See Spotify's developers platform if you want to use yours. If you rebuild the application yourself and want yours built-in as well, you need to put them in the `client_info.h` file.
+
 ## Installing
 
 1. Pre-built binaries are in the **SpotConnect-X.Y.Z.zip** file (both spotupnp or spotraop), use the version that matches your OS. You can also look at releases
