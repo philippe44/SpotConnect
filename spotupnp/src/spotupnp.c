@@ -802,10 +802,21 @@ static void *UpdateThread(void *args) {
 						// if device does not answer, try to download its DescDoc
 						IXML_Document* DescDoc = NULL;
 						if (UpnpDownloadXmlDoc(Device->DescDocURL, &DescDoc) != UPNP_E_SUCCESS) {
+							struct spotPlayer *dying;
+
 							pthread_mutex_lock(&Device->Mutex);
 							LOG_INFO("[%p]: removing unresponsive player (%s) with error count %d and timeout %d", Device,
 								      Device->Config.Name, Device->ErrorCount, now - Device->LastSeen);
-							spotDeletePlayer(Device->SpotPlayer);
+
+							// spotDeletePlayer blocks in ~CSpotPlayer until the player task exits, and that
+							// task's teardown calls shadowRequest which takes Device->Mutex. Holding the mutex
+							// here would deadlock and leave the renderer gone from Spotify until restart.
+							dying = Device->SpotPlayer;
+							Device->SpotPlayer = NULL;
+							pthread_mutex_unlock(&Device->Mutex);
+							spotDeletePlayer(dying);
+							pthread_mutex_lock(&Device->Mutex);
+
 							// device's mutex returns unlocked
 							DelMRDevice(Device);
 						} else {
@@ -820,6 +831,7 @@ static void *UpdateThread(void *args) {
 
 			// device removal request
 			} else if (Update->Type == BYE_BYE) {
+				struct spotPlayer *dying;
 
 				Device = UDN2Device(Update->Data);
 
@@ -827,7 +839,15 @@ static void *UpdateThread(void *args) {
 				if (!CheckAndLock(Device)) continue;
 
 				LOG_INFO("[%p]: renderer bye-bye: %s", Device, Device->Config.Name);
-				spotDeletePlayer(Device->SpotPlayer);
+
+				// Same lock-ordering rule as the presence-timeout path: drop Device->Mutex
+				// before spotDeletePlayer so the player task can take it and exit cleanly.
+				dying = Device->SpotPlayer;
+				Device->SpotPlayer = NULL;
+				pthread_mutex_unlock(&Device->Mutex);
+				spotDeletePlayer(dying);
+				pthread_mutex_lock(&Device->Mutex);
+
 				// device's mutex returns unlocked
 				DelMRDevice(Device);
 
@@ -885,12 +905,17 @@ static void *UpdateThread(void *args) {
 																  Device->Config.CacheMode, (struct shadowPlayer*) Device, &Device->Mutex);
 							pthread_mutex_unlock(&Device->Mutex);
 						} else if (Master && (!Device->Master || Device->Master == Device)) {
+							struct spotPlayer *dying;
+
 							pthread_mutex_lock(&Device->Mutex);
 							LOG_INFO("[%p]: Sonos %s is now slave", Device, Device->Config.Name);
 							Device->Master = Master;
-							spotDeletePlayer(Device->SpotPlayer);
+
+							// Same lock-ordering rule as above.
+							dying = Device->SpotPlayer;
 							Device->SpotPlayer = NULL;
 							pthread_mutex_unlock(&Device->Mutex);
+							spotDeletePlayer(dying);
 						}
 
 						NFREE(friendlyName);
