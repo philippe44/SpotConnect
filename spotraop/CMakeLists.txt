@@ -1,3 +1,5 @@
+# To be able to build a debug version, the libcodecs needs to be rebuild in debug mode
+
 cmake_minimum_required(VERSION 3.0)
 
 if(WIN32)
@@ -116,12 +118,12 @@ set(BELL_EXTERNAL_VORBIS "${_INFO}" CACHE STRING "")
 # or do manually
 # target_include_directories(${PROJECT} PRIVATE ${BASE}/common/libcodecs/targets/include/flac ${BASE}/common/libcodecs/targets/include/shine)
 # target_include_directories(${PROJECT} PRIVATE ${BASE}/common/libcodecs/targets/include/ogg ${BASE}/common/libcodecs/targets/include/vorbis)
-# set(BELL_EXTERNAL_VORBIS ${BASE}/common/libcodecs/targets/${HOST}/${PLATFORM}/libcodecs.${LIB})
+# set(BELL_EXTERNAL_VORBIS ${BASE}/common/libcodecs/targets/${HOST}/${PLATFORM}/libcodecs})
 
 # pthreads
 if(MSVC)
     list(APPEND EXTRA_INCLUDES ${BASE}/common/libpthreads4w/targets/${HOST}/${PLATFORM}/include)
-    list(APPEND EXTRA_LIBS ${BASE}/common/libpthreads4w/targets/${HOST}/${PLATFORM}/libpthreadVC3.lib)
+    list(APPEND EXTRA_LIBS ${BASE}/common/libpthreads4w/targets/${HOST}/${PLATFORM}/libpthreadVC3${LIBRARY_SUFFIX})
 endif()
 
 # Import cspot library

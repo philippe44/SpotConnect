@@ -17,6 +17,8 @@ if not exist %build% (
 	cd %build%
 )
 
+REM To be able to build a debug version, the libcodecs needs to be rebuild in debug mode
+
 msbuild "spotraop.sln" -p:Configuration=Release -p:Platform=Win32 %option%
 
 robocopy Release %pwd%\bin *.exe /NDL /NJH /NJS /nc /ns /np
