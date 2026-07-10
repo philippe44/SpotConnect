@@ -126,8 +126,16 @@ void FlushMRDevices(void) {
 		struct sMR *p = &glMRDevices[i];
 		pthread_mutex_lock(&p->Mutex);
 		if (p->Running) {
+			// Same lock-ordering rule as the per-renderer removal paths in
+			// spotupnp.c: do not hold p->Mutex across spotDeletePlayer(), because
+			// the player task's teardown needs that mutex (via shadowRequest) to
+			// make progress, and ~CSpotPlayer() blocks until the task exits.
+			struct spotPlayer *Player = p->SpotPlayer;
+			p->SpotPlayer = NULL;
+			pthread_mutex_unlock(&p->Mutex);
+			spotDeletePlayer(Player);
+			pthread_mutex_lock(&p->Mutex);
 			// device's mutex returns unlocked
-			spotDeletePlayer(p->SpotPlayer);
 			DelMRDevice(p);
 		} else pthread_mutex_unlock(&p->Mutex);
 	}

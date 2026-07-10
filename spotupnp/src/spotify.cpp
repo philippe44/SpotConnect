@@ -522,6 +522,10 @@ void CSpotPlayer::disconnect(bool abort) {
 }
 
 bool getMetaForUrl(CSpotPlayer* self, const std::string url, metadata_t* metadata) {
+    // Device->Mutex is released around spotDeletePlayer(), during which Device->SpotPlayer
+    // is NULL. Callers such as spotupnp.c's ActionHandler do not null-check, so guard here
+    // to keep NULL a valid sentinel, matching the contract that notify() already upholds.
+    if (!self) return false;
     for (auto it = self->streamers.begin(); it != self->streamers.end(); ++it) {
         if ((*it)->getStreamUrl() == url) {
             (*it)->getMetadata(metadata);
