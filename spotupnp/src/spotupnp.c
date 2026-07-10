@@ -901,17 +901,15 @@ static void *UpdateThread(void *args) {
 																  Device->Config.CacheMode, (struct shadowPlayer*) Device, &Device->Mutex);
 							pthread_mutex_unlock(&Device->Mutex);
 						} else if (Master && (!Device->Master || Device->Master == Device)) {
-							struct spotPlayer *dying;
-
 							pthread_mutex_lock(&Device->Mutex);
 							LOG_INFO("[%p]: Sonos %s is now slave", Device, Device->Config.Name);
 							Device->Master = Master;
 
 							// Same lock-ordering rule as above.
-							dying = Device->SpotPlayer;
+							struct spotPlayer *Player = Device->SpotPlayer;
 							Device->SpotPlayer = NULL;
 							pthread_mutex_unlock(&Device->Mutex);
-							spotDeletePlayer(dying);
+							spotDeletePlayer(Player);
 						}
 
 						NFREE(friendlyName);
