@@ -130,10 +130,10 @@ void FlushMRDevices(void) {
 			// spotupnp.c: do not hold p->Mutex across spotDeletePlayer(), because
 			// the player task's teardown needs that mutex (via shadowRequest) to
 			// make progress, and ~CSpotPlayer() blocks until the task exits.
-			struct spotPlayer *player = p->SpotPlayer;
+			struct spotPlayer *Player = p->SpotPlayer;
 			p->SpotPlayer = NULL;
 			pthread_mutex_unlock(&p->Mutex);
-			spotDeletePlayer(player);
+			spotDeletePlayer(Player);
 			pthread_mutex_lock(&p->Mutex);
 			// device's mutex returns unlocked
 			DelMRDevice(p);
