@@ -802,8 +802,6 @@ static void *UpdateThread(void *args) {
 						// if device does not answer, try to download its DescDoc
 						IXML_Document* DescDoc = NULL;
 						if (UpnpDownloadXmlDoc(Device->DescDocURL, &DescDoc) != UPNP_E_SUCCESS) {
-							struct spotPlayer *dying;
-
 							pthread_mutex_lock(&Device->Mutex);
 							LOG_INFO("[%p]: removing unresponsive player (%s) with error count %d and timeout %d", Device,
 								      Device->Config.Name, Device->ErrorCount, now - Device->LastSeen);
@@ -811,10 +809,10 @@ static void *UpdateThread(void *args) {
 							// spotDeletePlayer blocks in ~CSpotPlayer until the player task exits, and that
 							// task's teardown calls shadowRequest which takes Device->Mutex. Holding the mutex
 							// here would deadlock and leave the renderer gone from Spotify until restart.
-							dying = Device->SpotPlayer;
+							struct spotPlayer *Player = Device->SpotPlayer;
 							Device->SpotPlayer = NULL;
 							pthread_mutex_unlock(&Device->Mutex);
-							spotDeletePlayer(dying);
+							spotDeletePlayer(Player);
 							pthread_mutex_lock(&Device->Mutex);
 
 							// device's mutex returns unlocked
