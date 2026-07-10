@@ -829,8 +829,6 @@ static void *UpdateThread(void *args) {
 
 			// device removal request
 			} else if (Update->Type == BYE_BYE) {
-				struct spotPlayer *dying;
-
 				Device = UDN2Device(Update->Data);
 
 				// Multiple bye-bye might be sent
@@ -840,10 +838,10 @@ static void *UpdateThread(void *args) {
 
 				// Same lock-ordering rule as the presence-timeout path: drop Device->Mutex
 				// before spotDeletePlayer so the player task can take it and exit cleanly.
-				dying = Device->SpotPlayer;
+				struct spotPlayer *Player = Device->SpotPlayer;
 				Device->SpotPlayer = NULL;
 				pthread_mutex_unlock(&Device->Mutex);
-				spotDeletePlayer(dying);
+				spotDeletePlayer(Player);
 				pthread_mutex_lock(&Device->Mutex);
 
 				// device's mutex returns unlocked
