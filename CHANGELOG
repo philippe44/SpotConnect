@@ -1,3 +1,6 @@
+0.20.3
+ - fix bell & cspot deadloops as well, credits@@007hacky007
+ 
 0.20.2
  - fix player deletion deadlock (credits @007hacky007)
  
