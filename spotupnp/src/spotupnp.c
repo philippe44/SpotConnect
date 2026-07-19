@@ -857,10 +857,31 @@ static void *UpdateThread(void *args) {
 
 			// device removal request
 			} else if (Update->Type == BYE_BYE) {
+				IXML_Document* DescDoc = NULL;
+
 				Device = UDN2Device(Update->Data);
 
 				// Multiple bye-bye might be sent
 				if (!CheckAndLock(Device)) continue;
+
+				/* some renderers (e.g. Hama DIT2010) cycle bye-bye/alive when their AV
+				 * stack restarts on a stream transition, while they keep playing and
+				 * answering requests; removing the player kills the Spotify session, so
+				 * before trusting the bye-bye check whether the device still answers its
+				 * description URL, like the presence-timeout path does. Do not hold the
+				 * device's mutex across the blocking download; only this thread removes
+				 * devices, so the slot cannot go away meanwhile */
+				pthread_mutex_unlock(&Device->Mutex);
+				bool alive = UpnpDownloadXmlDoc(Device->DescDocURL, &DescDoc) == UPNP_E_SUCCESS;
+				if (DescDoc) ixmlDocument_free(DescDoc);
+				if (!CheckAndLock(Device)) continue;
+
+				if (alive) {
+					Device->LastSeen = now;
+					LOG_INFO("[%p]: ignoring bye-bye from a live renderer (%s)", Device, Device->Config.Name);
+					pthread_mutex_unlock(&Device->Mutex);
+					continue;
+				}
 
 				LOG_INFO("[%p]: renderer bye-bye: %s", Device, Device->Config.Name);
 
