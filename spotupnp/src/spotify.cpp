@@ -483,7 +483,9 @@ void notify(CSpotPlayer *self, enum shadowEvent event, va_list args) {
 
         // finally, get ready for time position and inform spotify that we are playing
         self->lastPosition = 0;
-        if (self->notify) self->spirc->notifyAudioReachedPlayback();
+        // pass the started stream's track so a stale start (from a stream that predates
+        // a queue rebuild) cannot advance the queue and desync playback for good
+        if (self->notify) self->spirc->notifyAudioReachedPlayback(self->player->trackUnique);
         else self->notify = true;
 
         // avoid weird cases where position is either random or last seek (will be corrected by SHADOW_TIME)
