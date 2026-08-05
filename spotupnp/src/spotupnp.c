@@ -363,6 +363,12 @@ void shadowRequest(struct shadowPlayer *shadow, enum spotEvent event, ...) {
 		if (Device->State != PLAYING || Device->ExpectStop) AVTPlay(Device);
 		// should we set volume?
 		Device->SpotState = SPOT_PLAY;
+		/* ExpectStop must survive until ActionHandler processes a transport
+		 * state with playback re-established: a renderer that is slow to leave
+		 * STOPPED can still report the STOPPED caused by our own AVTStop after
+		 * it has acknowledged this play, and clearing the flag early makes that
+		 * late report look like a user-initiated stop, which disconnects the
+		 * player */
 		break;
 	}
 	case SPOT_PAUSE:
@@ -529,8 +535,11 @@ int ActionHandler(Upnp_EventType EventType, const void *Event, void *Cookie) {
 				_ProcessQueue(p);
 
 				if (Resp && !strcasecmp(Resp, "PlayResponse")) {
-					// with and after a PlayResponse, we can't expect a STOPPED state
-					p->ExpectStop = false;
+					/* do NOT clear ExpectStop here: a renderer that is slow to leave
+					 * STOPPED (e.g. tearing down a buffered stream after a pause) can
+					 * still report the STOPPED caused by our own stop after it has
+					 * acknowledged this play; the flag is cleared once a transport
+					 * state is processed with playback re-established */
 					/* when play action has been completed, the state need to be re-acquired because we
 					 * might have missed a state in-between. For example, while seeking there is a very
 					 * stop/play so the STOPPED state will be missed and the PLAYING event will be as
@@ -573,12 +582,11 @@ int ActionHandler(Upnp_EventType EventType, const void *Event, void *Cookie) {
 							// some players (Sonos again...) report a STOPPED state when pause *only* with mp3
 							spotNotify(p->SpotPlayer, SHADOW_STOP);
 						}
-						break;
 					}
 
 					// move to STOPPED state anyway as next detection will re-sync us
 					p->State = STOPPED;
-					p->ExpectStop = false;	
+					p->ExpectStop = false;
 				} else if (!strcmp(r, "PLAYING") && (p->State != PLAYING)) {
 					p->State = PLAYING;
 					LOG_INFO("[%p]: uPNP playing", p);
@@ -588,6 +596,15 @@ int ActionHandler(Upnp_EventType EventType, const void *Event, void *Cookie) {
 					LOG_INFO("[%p]: uPNP pause", p);
 					if (p->SpotState == SPOT_PLAY) spotNotify(p->SpotPlayer, SHADOW_PAUSE);
 				}
+
+				/* the expected-stop suppression ends with the first transport state
+				 * processed once we are playing again (SpotState reflects the play
+				 * that follows our own stop; a state observed before that can be a
+				 * leftover of the stop still being executed). A renderer whose
+				 * pipeline is slow can legitimately still report the STOPPED caused
+				 * by our own stop on that first poll (the branch above absorbs it
+				 * exactly once); anything observed after that is genuine again */
+				if (p->SpotState == SPOT_PLAY) p->ExpectStop = false;
 
 				free(r);
 			}
