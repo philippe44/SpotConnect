@@ -22,7 +22,7 @@
 #include "metadata.h"
 #include "spotify.h"
 
-#define VERSION "v0.20.2"" ("__DATE__" @ "__TIME__")"
+#define VERSION "v0.20.3"" ("__DATE__" @ "__TIME__")"
 
 /*----------------------------------------------------------------------------*/
 /* typedefs */
@@ -35,6 +35,7 @@
 #define RESOURCE_LENGTH	250
 
 enum 	eMRstate { UNKNOWN, STOPPED, PLAYING, PAUSED, TRANSITIONING };
+enum 	eStopState { STOP_NONE, STOP_PENDING, STOP_IGNORE };
 enum 	{ AVT_SRV_IDX = 0, REND_SRV_IDX, CNX_MGR_IDX, TOPOLOGY_IDX, GRP_REND_SRV_IDX, NB_SRV };
 
 struct sService {
@@ -74,7 +75,7 @@ struct sMR {
 	char DescDocURL		[RESOURCE_LENGTH];
 	char friendlyName	[STR_LEN];
 	enum eMRstate 	State;
-	bool			ExpectStop;
+	enum eStopState ExpectStop;
 	struct spotPlayer *SpotPlayer;
 	metadata_t		MetaData;
 	enum spotEvent	SpotState;

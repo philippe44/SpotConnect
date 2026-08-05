@@ -329,7 +329,7 @@ void shadowRequest(struct shadowPlayer *shadow, enum spotEvent event, ...) {
 		LOG_INFO("[%p]: Stop", Device);
 		if (Device->SpotState != SPOT_STOP) {
 			AVTStop(Device);
-			Device->ExpectStop = true;
+			Device->ExpectStop = STOP_PENDING;
 		}
 		Device->SpotState = SPOT_STOP;
 		break;
@@ -343,12 +343,14 @@ void shadowRequest(struct shadowPlayer *shadow, enum spotEvent event, ...) {
 		// reset these counters to avoid false rollover
 		Device->Elapsed = Device->ElapsedAccrued = 0;
 
+		// load must invalidate any pending url
+		NFREE(Device->NextStreamUrl);
+
 		LOG_INFO("[%p]: spotify LOAD request", Device);
 
 		if (Device->SpotState != SPOT_PLAY || Device->Gapless) {
 			SetTrackURI(Device, Device->SpotState == SPOT_PLAY, StreamUrl, MetaData);
 		} else {
-			NFREE(Device->NextStreamUrl);
 			Device->NextStreamUrl = strdup(StreamUrl);
 			LOG_INFO("[%p]: Gapped next track %s", Device, Device->NextStreamUrl);
 		}
@@ -358,16 +360,16 @@ void shadowRequest(struct shadowPlayer *shadow, enum spotEvent event, ...) {
 		// can't play until we are loaded or paused
 		if (Device->SpotState == SPOT_PLAY) break;
 		LOG_INFO("[%p]: spotify play request", Device);
-		if (Device->State != PLAYING || Device->ExpectStop) AVTPlay(Device);
+		if (Device->State != PLAYING || Device->ExpectStop != STOP_NONE) AVTPlay(Device);
 		// should we set volume?
 		Device->SpotState = SPOT_PLAY;
-		Device->ExpectStop = false;
+		if (Device->ExpectStop == STOP_PENDING) Device->ExpectStop = STOP_IGNORE;
 		break;
 	}
 	case SPOT_PAUSE:
 		if (Device->SpotState == SPOT_PAUSE) break;
 		LOG_INFO("[%p]: spotify pause request", Device);
-		if (Device->State != PAUSED || Device->ExpectStop) AVTBasic(Device, "Pause");
+		if (Device->State != PAUSED || Device->ExpectStop != STOP_NONE) AVTBasic(Device, "Pause");
 		Device->SpotState = event;
 		break;
 	case SPOT_VOLUME: {
@@ -552,22 +554,35 @@ int ActionHandler(Upnp_EventType EventType, const void *Event, void *Cookie) {
 				} else if (!strcmp(r, "STOPPED") && p->State != STOPPED) {
 					LOG_INFO("[%p]: uPNP stopped", p);
 
-					if (p->SpotState == SPOT_PLAY && !p->ExpectStop && p->NextStreamUrl) {
-						metadata_t MetaData = { 0 };
-						if (spotGetMetaForUrl(p->SpotPlayer, p->NextStreamUrl, &MetaData)) {
-							SetTrackURI(p, false, p->NextStreamUrl, &MetaData);
-							AVTPlay(p);
-						} else {
+					switch (p->ExpectStop) {
+					case STOP_PENDING:
+						// expected stop, move to full stop and report
+						spotNotify(p->SpotPlayer, SHADOW_STOP);
+						break;
+					case STOP_IGNORE:
+						LOG_INFO("[%p]: stop ignored", p);
+						break;
+					case STOP_NONE:
+						// unexpected stop, move to next url if any, report otherwise
+						if (p->SpotState == SPOT_PLAY && p->NextStreamUrl) {
+							metadata_t MetaData = { 0 };
+							if (spotGetMetaForUrl(p->SpotPlayer, p->NextStreamUrl, &MetaData)) {
+								SetTrackURI(p, false, p->NextStreamUrl, &MetaData);
+								AVTPlay(p);
+							} else {
+								spotNotify(p->SpotPlayer, SHADOW_STOP);
+							}
+							NFREE(p->NextStreamUrl);
+						} else if (p->SpotState != SPOT_STOP && p->SpotState != SPOT_PAUSE) {
+							// some players (Sonos again...) report a STOPPED state when pause *only* with mp3
 							spotNotify(p->SpotPlayer, SHADOW_STOP);
 						}
-						NFREE(p->NextStreamUrl);
-					} else if (p->SpotState != SPOT_STOP && p->SpotState != SPOT_PAUSE) {
-						// some players (Sonos again...) report a STOPPED state when pause *only* with mp3
-						spotNotify(p->SpotPlayer, SHADOW_STOP);
+						break;
 					}
 
+					// move to STOPPED state anyway as next detection will re-sync us
 					p->State = STOPPED;
-					p->ExpectStop = false;	
+					p->ExpectStop = STOP_NONE;	
 				} else if (!strcmp(r, "PLAYING") && (p->State != PLAYING)) {
 					p->State = PLAYING;
 					LOG_INFO("[%p]: uPNP playing", p);
@@ -577,6 +592,9 @@ int ActionHandler(Upnp_EventType EventType, const void *Event, void *Cookie) {
 					LOG_INFO("[%p]: uPNP pause", p);
 					if (p->SpotState == SPOT_PLAY) spotNotify(p->SpotPlayer, SHADOW_PAUSE);
 				}
+
+				// any other state than transitioning causes a reset of the stop waiting flag
+				if (p->State != TRANSITIONING && p->ExpectStop == STOP_IGNORE) p->ExpectStop = STOP_NONE;
 
 				free(r);
 			}
@@ -1134,7 +1152,7 @@ static bool AddMRDevice(struct sMR* Device, char* UDN, IXML_Document* DescDoc, c
 	char* MimeType;
 	if (!strcasecmp(Device->Config.Codec, "pcm")) MimeType = "audio/L16;rate=44100;channels=2";
 	else if (!strcasecmp(Device->Config.Codec, "wav")) MimeType = "audio/wav";
-	else if (strcasestr(Device->Config.Codec, "mp3")) MimeType = "audio/mepg";
+	else if (strcasestr(Device->Config.Codec, "mp3")) MimeType = "audio/mpeg";
 	else if (strcasestr(Device->Config.Codec, "opus")) MimeType = "audio/ogg";
 	else if (strcasestr(Device->Config.Codec, "vorbis")) MimeType = "audio/ogg";
 	else if (strcasestr(Device->Config.Codec, "aac")) MimeType = "audio/aac";

@@ -501,7 +501,7 @@ void CSpotPlayer::runTask() {
                 // new track has reached DAC, this is "delay" after change of identifier
                 if (startTime && now >= startTime) {
                     // do we have to notify cspot
-                    if (notify) spirc->notifyAudioReachedPlayback();
+                    if (notify) spirc->notifyAudioReachedPlayback(streamTrackUnique);
                     else notify = true;
 
                     // here we have trackInfo, through notify or from before the flush
