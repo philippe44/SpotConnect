@@ -1,3 +1,6 @@
+0.20.4
+ - fix SpotUpnp ExpectStop causing unexpected stop due to state change timings (credits@@007hacky007)
+ 
 0.20.3
  - fix bell & cspot deadloops as well, credits@@007hacky007
  
