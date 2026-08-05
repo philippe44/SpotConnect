@@ -329,7 +329,7 @@ void shadowRequest(struct shadowPlayer *shadow, enum spotEvent event, ...) {
 		LOG_INFO("[%p]: Stop", Device);
 		if (Device->SpotState != SPOT_STOP) {
 			AVTStop(Device);
-			Device->ExpectStop = STOP_PENDING;
+			Device->ExpectStop = true;
 		}
 		Device->SpotState = SPOT_STOP;
 		break;
@@ -360,16 +360,15 @@ void shadowRequest(struct shadowPlayer *shadow, enum spotEvent event, ...) {
 		// can't play until we are loaded or paused
 		if (Device->SpotState == SPOT_PLAY) break;
 		LOG_INFO("[%p]: spotify play request", Device);
-		if (Device->State != PLAYING || Device->ExpectStop != STOP_NONE) AVTPlay(Device);
+		if (Device->State != PLAYING || Device->ExpectStop) AVTPlay(Device);
 		// should we set volume?
 		Device->SpotState = SPOT_PLAY;
-		if (Device->ExpectStop == STOP_PENDING) Device->ExpectStop = STOP_IGNORE;
 		break;
 	}
 	case SPOT_PAUSE:
 		if (Device->SpotState == SPOT_PAUSE) break;
 		LOG_INFO("[%p]: spotify pause request", Device);
-		if (Device->State != PAUSED || Device->ExpectStop != STOP_NONE) AVTBasic(Device, "Pause");
+		if (Device->State != PAUSED || Device->ExpectStop) AVTBasic(Device, "Pause");
 		Device->SpotState = event;
 		break;
 	case SPOT_VOLUME: {
@@ -529,12 +528,16 @@ int ActionHandler(Upnp_EventType EventType, const void *Event, void *Cookie) {
 				p->StartCookie = p->WaitCookie;
 				_ProcessQueue(p);
 
-				/* when play action has been completed, the state need to be re-acquired because we
-				 * might have missed a state in-between. For example, while seeking there is a very
-				 * stop/play so the STOPPED state will be missed and the PLAYING event will be as
-				 * well. This should not be done for stop/pause actions otherwise we might create a fake STOPPED event state and think
-				 * we stopped when in fact it's just the re-acquisition of current state */
-				if (Resp && !strcasecmp(Resp, "PlayResponse") && p->State == PLAYING) p->State = UNKNOWN;
+				if (Resp && !strcasecmp(Resp, "PlayResponse")) {
+					// with and after a PlayResponse, we can't expect a STOPPED state
+					p->ExpectStop = false;
+					/* when play action has been completed, the state need to be re-acquired because we
+					 * might have missed a state in-between. For example, while seeking there is a very
+					 * stop/play so the STOPPED state will be missed and the PLAYING event will be as
+					 * well. This should not be done for stop/pause actions otherwise we might create a fake STOPPED event state and think
+					 * we stopped when in fact it's just the re-acquisition of current state */
+					if (p->State == PLAYING) p->State = UNKNOWN;
+				}
 
 				break;
 			}
@@ -552,17 +555,10 @@ int ActionHandler(Upnp_EventType EventType, const void *Event, void *Cookie) {
 					p->State = TRANSITIONING;
 					LOG_INFO("[%p]: uPNP transition", p);
 				} else if (!strcmp(r, "STOPPED") && p->State != STOPPED) {
-					LOG_INFO("[%p]: uPNP stopped", p);
-
-					switch (p->ExpectStop) {
-					case STOP_PENDING:
-						// expected stop, move to full stop and report
-						spotNotify(p->SpotPlayer, SHADOW_STOP);
-						break;
-					case STOP_IGNORE:
-						LOG_INFO("[%p]: stop ignored", p);
-						break;
-					case STOP_NONE:
+					if (p->ExpectStop) {
+						LOG_INFO("[%p]: uPNP stop expected", p);
+					} else {
+						LOG_INFO("[%p]: uPNP stop unexpected", p);
 						// unexpected stop, move to next url if any, report otherwise
 						if (p->SpotState == SPOT_PLAY && p->NextStreamUrl) {
 							metadata_t MetaData = { 0 };
@@ -582,7 +578,7 @@ int ActionHandler(Upnp_EventType EventType, const void *Event, void *Cookie) {
 
 					// move to STOPPED state anyway as next detection will re-sync us
 					p->State = STOPPED;
-					p->ExpectStop = STOP_NONE;	
+					p->ExpectStop = false;	
 				} else if (!strcmp(r, "PLAYING") && (p->State != PLAYING)) {
 					p->State = PLAYING;
 					LOG_INFO("[%p]: uPNP playing", p);
@@ -592,9 +588,6 @@ int ActionHandler(Upnp_EventType EventType, const void *Event, void *Cookie) {
 					LOG_INFO("[%p]: uPNP pause", p);
 					if (p->SpotState == SPOT_PLAY) spotNotify(p->SpotPlayer, SHADOW_PAUSE);
 				}
-
-				// any other state than transitioning causes a reset of the stop waiting flag
-				if (p->State != TRANSITIONING && p->ExpectStop == STOP_IGNORE) p->ExpectStop = STOP_NONE;
 
 				free(r);
 			}
