@@ -329,7 +329,7 @@ void shadowRequest(struct shadowPlayer *shadow, enum spotEvent event, ...) {
 		LOG_INFO("[%p]: Stop", Device);
 		if (Device->SpotState != SPOT_STOP) {
 			AVTStop(Device);
-			Device->ExpectStop = STOP_PENDING;
+			Device->ExpectStop = true;
 		}
 		Device->SpotState = SPOT_STOP;
 		break;
@@ -360,16 +360,15 @@ void shadowRequest(struct shadowPlayer *shadow, enum spotEvent event, ...) {
 		// can't play until we are loaded or paused
 		if (Device->SpotState == SPOT_PLAY) break;
 		LOG_INFO("[%p]: spotify play request", Device);
-		if (Device->State != PLAYING || Device->ExpectStop != STOP_NONE) AVTPlay(Device);
+		if (Device->State != PLAYING || Device->ExpectStop) AVTPlay(Device);
 		// should we set volume?
 		Device->SpotState = SPOT_PLAY;
-		if (Device->ExpectStop == STOP_PENDING) Device->ExpectStop = STOP_IGNORE;
 		break;
 	}
 	case SPOT_PAUSE:
 		if (Device->SpotState == SPOT_PAUSE) break;
 		LOG_INFO("[%p]: spotify pause request", Device);
-		if (Device->State != PAUSED || Device->ExpectStop != STOP_NONE) AVTBasic(Device, "Pause");
+		if (Device->State != PAUSED || Device->ExpectStop) AVTBasic(Device, "Pause");
 		Device->SpotState = event;
 		break;
 	case SPOT_VOLUME: {
@@ -532,8 +531,9 @@ int ActionHandler(Upnp_EventType EventType, const void *Event, void *Cookie) {
 				/* when play action has been completed, the state need to be re-acquired because we
 				 * might have missed a state in-between. For example, while seeking there is a very
 				 * stop/play so the STOPPED state will be missed and the PLAYING event will be as
-				 * well. This should not be done for stop/pause actions otherwise we might create a fake STOPPED event state and think
-				 * we stopped when in fact it's just the re-acquisition of current state */
+				 * well. This should not be done for stop/pause actions otherwise we might create a
+				 * fake STOPPED event state and think we stopped when in fact it's just the 
+				 * re-acquisition of current state */
 				if (Resp && !strcasecmp(Resp, "PlayResponse") && p->State == PLAYING) p->State = UNKNOWN;
 
 				break;
@@ -552,18 +552,10 @@ int ActionHandler(Upnp_EventType EventType, const void *Event, void *Cookie) {
 					p->State = TRANSITIONING;
 					LOG_INFO("[%p]: uPNP transition", p);
 				} else if (!strcmp(r, "STOPPED") && p->State != STOPPED) {
-					LOG_INFO("[%p]: uPNP stopped", p);
-
-					switch (p->ExpectStop) {
-					case STOP_PENDING:
-						// expected stop, move to full stop and report
-						spotNotify(p->SpotPlayer, SHADOW_STOP);
-						break;
-					case STOP_IGNORE:
-						LOG_INFO("[%p]: stop ignored", p);
-						break;
-					case STOP_NONE:
-						// unexpected stop, move to next url if any, report otherwise
+					if (p->ExpectStop) {
+						LOG_INFO("[%p]: UPnP stop expected", p);
+					} else {
+						LOG_INFO("[%p]: UPnP stop unexpected", p);
 						if (p->SpotState == SPOT_PLAY && p->NextStreamUrl) {
 							metadata_t MetaData = { 0 };
 							if (spotGetMetaForUrl(p->SpotPlayer, p->NextStreamUrl, &MetaData)) {
@@ -577,14 +569,18 @@ int ActionHandler(Upnp_EventType EventType, const void *Event, void *Cookie) {
 							// some players (Sonos again...) report a STOPPED state when pause *only* with mp3
 							spotNotify(p->SpotPlayer, SHADOW_STOP);
 						}
-						break;
 					}
 
-					// move to STOPPED state anyway as next detection will re-sync us
+					// move to STOPPED state anyway as next poll/detection will re-sync us
 					p->State = STOPPED;
-					p->ExpectStop = STOP_NONE;	
+					p->ExpectStop = false;
 				} else if (!strcmp(r, "PLAYING") && (p->State != PLAYING)) {
 					p->State = PLAYING;
+					/* we will see that transition even if a STOPPED state is missed because when 
+					 * receiving the PlayResponse, we set state to UNKNOWN which forces it. If
+					 * there is a play error, a STOPPED state will be seen and the flag will be
+					 * reset then as well */
+					p->ExpectStop = false;
 					LOG_INFO("[%p]: uPNP playing", p);
 					if (p->SpotState != SPOT_PLAY) spotNotify(p->SpotPlayer, SHADOW_PLAY);
 				} else if (!strcmp(r, "PAUSED_PLAYBACK") && p->State != PAUSED) {
@@ -592,9 +588,6 @@ int ActionHandler(Upnp_EventType EventType, const void *Event, void *Cookie) {
 					LOG_INFO("[%p]: uPNP pause", p);
 					if (p->SpotState == SPOT_PLAY) spotNotify(p->SpotPlayer, SHADOW_PAUSE);
 				}
-
-				// any other state than transitioning causes a reset of the stop waiting flag
-				if (p->State != TRANSITIONING && p->ExpectStop == STOP_IGNORE) p->ExpectStop = STOP_NONE;
 
 				free(r);
 			}

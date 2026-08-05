@@ -35,7 +35,6 @@
 #define RESOURCE_LENGTH	250
 
 enum 	eMRstate { UNKNOWN, STOPPED, PLAYING, PAUSED, TRANSITIONING };
-enum 	eStopState { STOP_NONE, STOP_PENDING, STOP_IGNORE };
 enum 	{ AVT_SRV_IDX = 0, REND_SRV_IDX, CNX_MGR_IDX, TOPOLOGY_IDX, GRP_REND_SRV_IDX, NB_SRV };
 
 struct sService {
@@ -75,7 +74,7 @@ struct sMR {
 	char DescDocURL		[RESOURCE_LENGTH];
 	char friendlyName	[STR_LEN];
 	enum eMRstate 	State;
-	enum eStopState ExpectStop;
+	bool			ExpectStop;
 	struct spotPlayer *SpotPlayer;
 	metadata_t		MetaData;
 	enum spotEvent	SpotState;
