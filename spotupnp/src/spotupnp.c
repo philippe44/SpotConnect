@@ -823,13 +823,10 @@ static void *UpdateThread(void *args) {
 			if (Update->Type == SEARCH_TIMEOUT) {
 
 				LOG_DEBUG("Presence checking", NULL);
-				LOG_INFO("Presence checking", NULL);
 
 				for (int i = 0; i < glMaxDevices; i++) {
 					Device = glMRDevices + i;
-					if (Device->Running) {
-						LOG_INFO("Checking %s %d", Device->Config.Name, now - Device->LastSeen);
-					}
+
 					if (Device->Running && (Device->ErrorCount > MAX_ACTION_ERRORS || Device->ErrorCount < 0 ||
 						(Device->State == STOPPED && now - Device->LastSeen > PRESENCE_TIMEOUT))) {
 						// if device does not answer, try to download its DescDoc unless it is leaving
