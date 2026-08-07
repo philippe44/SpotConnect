@@ -67,7 +67,7 @@ typedef struct sMRConfig
 } tMRConfig;
 
 struct sMR {
-	bool  Running;
+	bool  Running, Leaving;
 	tMRConfig Config;
 	char Credentials[CREDENTIALS_LEN];
 	char UDN			[RESOURCE_LENGTH];

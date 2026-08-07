@@ -38,6 +38,7 @@
 
 #define DISCOVERY_TIME 		30
 #define PRESENCE_TIMEOUT	(DISCOVERY_TIME * 6)
+#define BYE_TIMEOUT			5
 
 /* for the haters of GOTO statement: I'm not a big fan either, but there are
 cases where they make code more leightweight and readable, instead of tons of
@@ -822,14 +823,18 @@ static void *UpdateThread(void *args) {
 			if (Update->Type == SEARCH_TIMEOUT) {
 
 				LOG_DEBUG("Presence checking", NULL);
+				LOG_INFO("Presence checking", NULL);
 
 				for (int i = 0; i < glMaxDevices; i++) {
 					Device = glMRDevices + i;
+					if (Device->Running) {
+						LOG_INFO("Checking %s %d", Device->Config.Name, now - Device->LastSeen);
+					}
 					if (Device->Running && (Device->ErrorCount > MAX_ACTION_ERRORS || Device->ErrorCount < 0 ||
 						(Device->State == STOPPED && now - Device->LastSeen > PRESENCE_TIMEOUT))) {
-						// if device does not answer, try to download its DescDoc
+						// if device does not answer, try to download its DescDoc unless it is leaving
 						IXML_Document* DescDoc = NULL;
-						if (UpnpDownloadXmlDoc(Device->DescDocURL, &DescDoc) != UPNP_E_SUCCESS) {
+						if (Device->Leaving || UpnpDownloadXmlDoc(Device->DescDocURL, &DescDoc) != UPNP_E_SUCCESS) {
 							pthread_mutex_lock(&Device->Mutex);
 							LOG_INFO("[%p]: removing unresponsive player (%s) with error count %d and timeout %d", Device,
 								      Device->Config.Name, Device->ErrorCount, now - Device->LastSeen);
@@ -858,24 +863,19 @@ static void *UpdateThread(void *args) {
 			// device removal request
 			} else if (Update->Type == BYE_BYE) {
 				Device = UDN2Device(Update->Data);
-
-				// Multiple bye-bye might be sent
 				if (!CheckAndLock(Device)) continue;
 
-				LOG_INFO("[%p]: renderer bye-bye: %s", Device, Device->Config.Name);
+				// some stack sends (many) bye-bye when their SSDP stack restarts, try to search again 
+				if (!Device->Leaving) {
+					LOG_INFO("[%p]: renderer <%s> bye-bye, doing a targeted search", Device, Device->Config.Name);
+					Device->LastSeen = now - PRESENCE_TIMEOUT + BYE_TIMEOUT - 1;
+					Device->Leaving = true;
+					UpnpSearchAsync(glControlPointHandle, BYE_TIMEOUT, Device->UDN, Device);
+				}
 
-				// Same lock-ordering rule as the presence-timeout path: drop Device->Mutex
-				// before spotDeletePlayer so the player task can take it and exit cleanly.
-				struct spotPlayer *Player = Device->SpotPlayer;
-				Device->SpotPlayer = NULL;
 				pthread_mutex_unlock(&Device->Mutex);
-				spotDeletePlayer(Player);
-				pthread_mutex_lock(&Device->Mutex);
 
-				// device's mutex returns unlocked
-				DelMRDevice(Device);
-
-			// device keepalive or search response
+				// device keepalive or search response
 			} else if (Update->Type == DISCOVERY) {
 				IXML_Document *DescDoc = NULL;
 				char *UDN = NULL, *ModelName = NULL, *ModelNumber = NULL;
@@ -898,6 +898,7 @@ static void *UpdateThread(void *args) {
 						struct sMR *Master = GetMaster(Device, &friendlyName);
 
 						Device->LastSeen = now;
+						Device->Leaving = false;
 						LOG_DEBUG("[%p] UPnP keep alive: %s", Device, Device->Config.Name);
 
 						// check for name change
@@ -1155,6 +1156,7 @@ static bool AddMRDevice(struct sMR* Device, char* UDN, IXML_Document* DescDoc, c
 	if (*Device->Config.ArtWork) Device->MetaData.artwork = Device->Config.ArtWork;
 
 	Device->Running = true;
+	Device->Leaving = false;
 	if (friendlyName) strcpy(Device->friendlyName, friendlyName);
 	if (!*Device->Config.Name) sprintf(Device->Config.Name, glNameFormat, friendlyName);
 	queue_init(&Device->ActionQueue, false, NULL);
