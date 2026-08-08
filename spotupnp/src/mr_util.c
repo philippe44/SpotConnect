@@ -25,7 +25,7 @@ static IXML_Node*	_getAttributeNode(IXML_Node *node, char *SearchAttr);
 int 				_voidHandler(Upnp_EventType EventType, const void *_Event, void *Cookie) { return 0; }
 
 /*----------------------------------------------------------------------------*/
-int CalcGroupVolume(struct sMR *Device) {
+int CalcGroupVolume(struct sMR *Device, bool query) {
 	int i, n = 0;
 	double GroupVolume = 0;
 
@@ -34,13 +34,18 @@ int CalcGroupVolume(struct sMR *Device) {
 	for (i = 0; i < glMaxDevices; i++) {
 		struct sMR *p = glMRDevices + i;
 		if (p->Running && (p == Device || p->Master == Device)) {
-			if (p->Volume == -1) p->Volume = CtrlGetVolume(p);
+			/* asking a member costs a synchronous request per unknown volume, so
+			 * callers that must not block settle for what is already cached */
+			if (p->Volume == -1 && query) p->Volume = CtrlGetVolume(p);
+
+			// a member whose volume we can't read must not drag the average down
+			if (p->Volume < 0) continue;
 			GroupVolume += p->Volume;
 			n++;
 		}
 	}
 
-	return GroupVolume / n;
+	return n ? GroupVolume / n : -1;
 }
 
 /*----------------------------------------------------------------------------*/

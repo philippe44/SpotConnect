@@ -84,7 +84,8 @@ private:
     shadowMutex playerMutex;
     bell::WrappedSemaphore clientConnected;
     std::string streamTrackUnique;
-    int volume = 0;
+    // written by the shadow's thread on local volume changes, read when a session starts
+    std::atomic<int> volume = 0;
     int32_t startOffset;
 
     uint64_t lastTimeStamp;
@@ -123,7 +124,7 @@ private:
 public:
     inline static std::string username = "", password = "";
 
-    CSpotPlayer(char *clientId, char *clientSecret, char* name, char* id, char *credentials, struct in_addr addr, AudioFormat audio, char* codec, bool flow,
+    CSpotPlayer(char *clientId, char *clientSecret, char* name, char* id, char *credentials, struct in_addr addr, AudioFormat audio, char* codec, bool flow, int volume,
         int64_t contentLength, int cacheMode, struct shadowPlayer* shadow, pthread_mutex_t* mutex);
     ~CSpotPlayer();
     void disconnect(bool abort = false);
@@ -132,10 +133,10 @@ public:
     bool friend getMetaForUrl(CSpotPlayer* self, const std::string url, metadata_t* metadata);
 };
 
-CSpotPlayer::CSpotPlayer(char *clientId, char* clientSecret, char* name, char* id, char *credentials, struct in_addr addr, AudioFormat format, char* codec, bool flow,
+CSpotPlayer::CSpotPlayer(char *clientId, char* clientSecret, char* name, char* id, char *credentials, struct in_addr addr, AudioFormat format, char* codec, bool flow, int volume,
     int64_t contentLength, int cacheMode, struct shadowPlayer* shadow, pthread_mutex_t* mutex) : bell::Task("playerInstance",
         48 * 1024, 0, 0),
-    clientConnected(1), codec(codec), id(id), addr(addr), flow(flow),
+    clientConnected(1), codec(codec), id(id), addr(addr), flow(flow), volume(volume),
     clientId(clientId), clientSecret(clientSecret), name(name), credentials(credentials), format(format), shadow(shadow), 
     playerMutex(mutex), cacheMode(cacheMode) {
     this->contentLength = (flow && contentLength == HTTP_CL_REAL) ? HTTP_CL_NONE : contentLength;
@@ -397,7 +398,7 @@ void CSpotPlayer::trackHandler(std::string_view trackUnique) {
         break;
     case cspot::SpircHandler::EventType::VOLUME:
         volume = std::get<int>(event->data);
-        shadowRequest(shadow, SPOT_VOLUME, volume);
+        shadowRequest(shadow, SPOT_VOLUME, volume.load());
         break;
     case cspot::SpircHandler::EventType::TRACK_INFO: {
         /* We can't use this directly to to set player->trackInfo because with ICY mode, the metadata
@@ -592,6 +593,11 @@ void CSpotPlayer::runTask() {
         ctx->config.clientId = clientId;
         ctx->config.clientSecret = clientSecret;
 
+        /* the very first frame sent to Spotify (Hello) carries the device's volume,
+         * taken from there, so it must be the shadow's one or the controller will
+         * display (and echo back) a null volume until playback starts */
+        ctx->config.volume = volume;
+
         // seems that mbedtls can catch error that are not fatal, so we should continue
         try {
             ctx->session->connectWithRandomAp();
@@ -664,14 +670,14 @@ void spotClose(void) {
 }
 
 struct spotPlayer* spotCreatePlayer(char *client_id, char* client_secret, char* name, char *id, char * credentials, struct in_addr addr, int oggRate, 
-                                        char *codec, bool flow, int64_t contentLength, int CacheMode, 
+                                        char *codec, bool flow, int64_t contentLength, int CacheMode, int volume,
                                         struct shadowPlayer* shadow, pthread_mutex_t *mutex) {
     AudioFormat format = AudioFormat_OGG_VORBIS_160;
 
     if (oggRate == 320) format = AudioFormat_OGG_VORBIS_320;
     else if (oggRate == 96) format = AudioFormat_OGG_VORBIS_96;
 
-    auto player = new CSpotPlayer(client_id, client_secret, name, id, credentials, addr, format, codec, flow, contentLength, CacheMode, shadow, mutex);
+    auto player = new CSpotPlayer(client_id, client_secret, name, id, credentials, addr, format, codec, flow, volume, contentLength, CacheMode, shadow, mutex);
     if (player->startTask()) return (struct spotPlayer*) player;
 
     delete player;
