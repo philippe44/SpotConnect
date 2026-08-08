@@ -212,6 +212,7 @@ static 	void*	MRThread(void *args);
 static 	void*	UpdateThread(void *args);
 static 	bool 	AddMRDevice(struct sMR *Device, char * UDN, IXML_Document *DescDoc,	const char *location);
 static	bool 	isExcluded(char *Model, char *ModelNumber);
+static	int 	SpotVolume(struct sMR *Device);
 static bool 	Start(bool cold);
 static bool 	Stop(bool exit);
 
@@ -490,6 +491,28 @@ static void ProcessEvent(Upnp_EventType EventType, const void *_Event, void *Coo
 	NFREE(LastChange);
 
 	pthread_mutex_unlock(&Device->Mutex);
+}
+
+/*----------------------------------------------------------------------------*/
+/* A player that has no idea of the renderer's volume announces 0 to Spotify, so
+ * controllers display (and echo back) a null volume until the renderer happens to
+ * signal a local change. Give it the real one, normalized exactly like the UPnP
+ * event feedback does, group volume included, or 0 when we don't know it. Only
+ * cached volumes are used: this runs on the update thread, at times with a device
+ * locked, so it must not go and ask the group members one synchronous request at
+ * a time. A group whose members are still unknown is seeded from its master */
+static int SpotVolume(struct sMR *Device) {
+	int GroupVolume = CalcGroupVolume(Device, false);
+	double Volume;
+
+	if (GroupVolume >= 0) Volume = GroupVolume / 100.0;
+	else if (Device->Volume >= 0 && Device->Config.MaxVolume > 0) Volume = Device->Volume / Device->Config.MaxVolume;
+	else return 0;
+
+	if (Volume > 1) Volume = 1;
+	LOG_INFO("[%p]: initial volume %d:%d", Device, (int) Device->Volume, GroupVolume);
+
+	return (int) (Volume * UINT16_MAX);
 }
 
 /*----------------------------------------------------------------------------*/
@@ -925,8 +948,8 @@ static void *UpdateThread(void *args) {
 							char id[6 * 2 + 1] = { 0 };
 							for (int i = 0; i < 6; i++) sprintf(id + i * 2, "%02x", Device->Config.mac[i]);
 							Device->SpotPlayer = spotCreatePlayer(glClientId, glClientSecret, Device->Config.Name, id, Device->Credentials, glHost, Device->Config.VorbisRate,
-																  Device->Config.Codec, Device->Config.Flow, Device->Config.HTTPContentLength, 
-																  Device->Config.CacheMode, (struct shadowPlayer*) Device, &Device->Mutex);
+																  Device->Config.Codec, Device->Config.Flow, Device->Config.HTTPContentLength,
+																  Device->Config.CacheMode, SpotVolume(Device), (struct shadowPlayer*) Device, &Device->Mutex);
 							pthread_mutex_unlock(&Device->Mutex);
 						} else if (Master && (!Device->Master || Device->Master == Device)) {
 							pthread_mutex_lock(&Device->Mutex);
@@ -984,7 +1007,7 @@ static void *UpdateThread(void *args) {
 					for (int i = 0; i < 6; i++) sprintf(id + i*2, "%02x", Device->Config.mac[i]);
 					Device->SpotPlayer = spotCreatePlayer(glClientId, glClientSecret, Device->Config.Name, id, Device->Credentials, glHost, Device->Config.VorbisRate,
 														  Device->Config.Codec, Device->Config.Flow, Device->Config.HTTPContentLength, 
-														  Device->Config.CacheMode, (struct shadowPlayer*) Device, &Device->Mutex);
+														  Device->Config.CacheMode, SpotVolume(Device), (struct shadowPlayer*) Device, &Device->Mutex);
 					if (!Device->SpotPlayer) {
 						LOG_ERROR("[%p]: cannot create Spotify instance (%s)", Device, Device->Config.Name);
 						pthread_mutex_lock(&Device->Mutex);
