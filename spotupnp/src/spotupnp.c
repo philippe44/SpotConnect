@@ -388,7 +388,7 @@ void shadowRequest(struct shadowPlayer *shadow, enum spotEvent event, ...) {
 		int GroupVolume;
 
 		// Sonos group volume API is unreliable, need to create our own
-		GroupVolume = CalcGroupVolume(Device);
+		GroupVolume = CalcGroupVolume(Device, true);
 
 		/* Volume is kept as a double in device's context to avoid relative values going 
 		 * to 0 and being stuck there. This works because although volume is echoed from 
@@ -403,10 +403,10 @@ void shadowRequest(struct shadowPlayer *shadow, enum spotEvent event, ...) {
 		} else {
 			double Ratio = GroupVolume ? (Volume * Device->Config.MaxVolume) / GroupVolume : 0;
 			
-			// set volume for all devices
+			// set volume for all devices, leaving alone any we could not read
 			for (int i = 0; i < glMaxDevices; i++) {
 				struct sMR *p = glMRDevices + i;
-				if (!p->Running || (p != Device && p->Master != Device)) continue;
+				if (!p->Running || (p != Device && p->Master != Device) || p->Volume < 0) continue;
 
 				// for standalone master, GroupVolume & Volume are identical
 				if (GroupVolume) p->Volume = min(p->Volume * Ratio, p->Config.MaxVolume);
@@ -479,7 +479,7 @@ static void ProcessEvent(Upnp_EventType EventType, const void *_Event, void *Coo
 		if (Volume != (int) Device->Volume && now > Master->VolumeStampTx + 1000) {
 			Device->Volume = Volume;
 			Master->VolumeStampRx = now;
-			GroupVolume = CalcGroupVolume(Master);
+			GroupVolume = CalcGroupVolume(Master, true);
 			LOG_INFO("[%p]: UPnP Volume local change %d:%d (%s)", Device, (int) Volume, (int) GroupVolume, Device->Master ? "slave": "master");
 			Volume = GroupVolume < 0 ? Volume / Device->Config.MaxVolume : GroupVolume / 100;
 			spotNotify(Device->SpotPlayer, SHADOW_VOLUME, (int) (Volume * UINT16_MAX));
