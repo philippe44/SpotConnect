@@ -1,3 +1,7 @@
+0.20.5
+ - be less aggressive with bye-bye and do a targeted discovery
+ - fix group volume and Spotify initial volume at creation (credits@@007hacky007)
+ 
 0.20.4
  - fix SpotUpnp ExpectStop causing unexpected stop due to state change timings (credits@@007hacky007)
  

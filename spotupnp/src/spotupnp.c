@@ -873,6 +873,7 @@ static void *UpdateThread(void *args) {
 						} else {
 							// device is in trouble, but let's renew grace period
 							Device->LastSeen = now;
+							Device->Leaving = false;
 							Device->ErrorCount = 0;
 							LOG_INFO("[%p]: %s mute to discovery, but answers UPnP, so keep it", Device, Device->Config.Name);
 						}
@@ -1099,6 +1100,7 @@ static bool AddMRDevice(struct sMR* Device, char* UDN, IXML_Document* DescDoc, c
 	Device->SpotState = SPOT_STOP;
 	Device->State = STOPPED;
 	Device->LastSeen = now / 1000;
+	Device->Leaving = false;
 	Device->VolumeStampRx = Device->VolumeStampTx = now - 2000;
 	Device->ExpectStop = false;
 	Device->TimeOut = false;
@@ -1176,7 +1178,6 @@ static bool AddMRDevice(struct sMR* Device, char* UDN, IXML_Document* DescDoc, c
 	if (*Device->Config.ArtWork) Device->MetaData.artwork = Device->Config.ArtWork;
 
 	Device->Running = true;
-	Device->Leaving = false;
 	if (friendlyName) strcpy(Device->friendlyName, friendlyName);
 	if (!*Device->Config.Name) sprintf(Device->Config.Name, glNameFormat, friendlyName);
 	queue_init(&Device->ActionQueue, false, NULL);
