@@ -380,9 +380,10 @@ void shadowRequest(struct shadowPlayer *shadow, enum spotEvent event, ...) {
 		Device->SpotState = event;
 		break;
 	case SPOT_VOLUME: {
-		// discard echo commands
+		/* discard echo commands; gettime_ms() is epoch-based and wraps every 49.7
+		 * days, so measure age by unsigned subtraction, never by comparing stamps */
 		uint32_t now = gettime_ms();
-		if (now < Device->VolumeStampRx + 1000) break;
+		if (now - Device->VolumeStampRx < 1000) break;
 		Device->VolumeStampTx = now;
 
 		// Volume is normalized 0..1
@@ -478,7 +479,8 @@ static void ProcessEvent(Upnp_EventType EventType, const void *_Event, void *Coo
 		double Volume = atoi(r), GroupVolume;
 		uint32_t now = gettime_ms();
 
-		if (Volume != (int) Device->Volume && now > Master->VolumeStampTx + 1000) {
+		// same wrap-safe age test as the SPOT_VOLUME echo discard
+		if (Volume != (int) Device->Volume && now - Master->VolumeStampTx > 1000) {
 			Device->Volume = Volume;
 			Master->VolumeStampRx = now;
 			GroupVolume = CalcGroupVolume(Master, true);
