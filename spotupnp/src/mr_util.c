@@ -162,6 +162,9 @@ void DelMRDevice(struct sMR *p) {
 	crossthreads_wake();
 	pthread_mutex_unlock(&p->Mutex);
 	pthread_join(p->Thread, NULL);
+
+	NFREE(p->StreamUrl);
+	NFREE(p->NextStreamUrl);
 }
 
 /*----------------------------------------------------------------------------*/
