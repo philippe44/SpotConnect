@@ -611,6 +611,23 @@ int ActionHandler(Upnp_EventType EventType, const void *Event, void *Cookie) {
 					// move to STOPPED state anyway as next detection will re-sync us
 					p->State = STOPPED;
 					p->ExpectStop = false;
+				} else if (!strcmp(r, "NO_MEDIA_PRESENT") && (p->State == PLAYING || p->State == PAUSED)) {
+					/* the renderer lost its media while we believed it was playing or paused
+					 * (standby, reboot, another controller took it over). It reports this
+					 * instead of STOPPED, so without this branch the device stays PLAYING
+					 * for good: the position poll keeps feeding a bogus 0 to Spotify every
+					 * second and the presence check, which only removes STOPPED devices, never
+					 * kicks in. Treat it as a stop; paused sessions are told as well because,
+					 * unlike a Sonos-style STOPPED-on-pause, the stream really is gone */
+					if (p->ExpectStop) {
+						LOG_INFO("[%p]: uPNP no media present (stop expected)", p);
+					} else {
+						LOG_INFO("[%p]: uPNP no media present, renderer lost its stream", p);
+						if (p->SpotState != SPOT_STOP) spotNotify(p->SpotPlayer, SHADOW_STOP);
+					}
+
+					p->State = STOPPED;
+					p->ExpectStop = false;
 				} else if (!strcmp(r, "PLAYING") && (p->State != PLAYING)) {
 					p->State = PLAYING;
 					LOG_INFO("[%p]: uPNP playing", p);
