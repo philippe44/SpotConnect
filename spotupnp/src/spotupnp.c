@@ -614,13 +614,7 @@ int ActionHandler(Upnp_EventType EventType, const void *Event, void *Cookie) {
 					p->State = STOPPED;
 					p->ExpectStop = false;
 				} else if (!strcmp(r, "NO_MEDIA_PRESENT") && (p->State == PLAYING || p->State == PAUSED)) {
-					/* the renderer lost its media while we believed it was playing or paused
-					 * (standby, reboot, another controller took it over). It reports this
-					 * instead of STOPPED, so without this branch the device stays PLAYING
-					 * for good: the position poll keeps feeding a bogus 0 to Spotify every
-					 * second and the presence check, which only removes STOPPED devices, never
-					 * kicks in. Treat it as a stop; paused sessions are told as well because,
-					 * unlike a Sonos-style STOPPED-on-pause, the stream really is gone */
+					// renderer lost its media while we believed it was playing or paused, we shall stop
 					if (p->ExpectStop) {
 						LOG_INFO("[%p]: uPNP no media present (stop expected)", p);
 					} else {
@@ -854,6 +848,7 @@ static void *UpdateThread(void *args) {
 		tUpdate *Update;
 
 		pthread_mutex_lock(&glUpdateMutex);
+		// a signal racing with cond_wait can be missed, but the queue will be processed next time
 		pthread_cond_wait(&glUpdateCond, &glUpdateMutex);
 		pthread_mutex_unlock(&glUpdateMutex);
 
@@ -1009,7 +1004,7 @@ static void *UpdateThread(void *args) {
 
 				// new device so search a free spot - as this function is not called
 				// recursively, no need to lock the device's mutex
-				for (Device = glMRDevices; Device->Running && Device < glMRDevices + glMaxDevices; Device++);
+				for (Device = glMRDevices; Device < glMRDevices + glMaxDevices && Device->Running; Device++);
 
 				// no more room !
 				if (Device == glMRDevices + glMaxDevices) {

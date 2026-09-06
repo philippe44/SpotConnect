@@ -267,7 +267,7 @@ void shadowRequest(struct shadowPlayer* shadow, enum spotEvent event, ...) {
 	case SPOT_VOLUME: {
 		// discard echo commands
 		uint32_t now = gettime_ms();
-		if (now < Device->VolumeStampRx + 1000) break;
+		if (now - Device->VolumeStampRx < 1000) break;
 
 		// Volume is normalized 0..1 and 0 is -144
 		Device->Muted = false;
@@ -350,8 +350,6 @@ static struct sMR *SearchUDN(char *UDN) {
 static void UpdateDevices() {
 	uint32_t now = gettime_ms() / 1000;
 
-	pthread_mutex_lock(&glMainMutex);
-
 	// walk through the list for device whose timeout expired
 	for (int i = 0; i < MAX_RENDERERS; i++) {
 		struct sMR* Device = Device = glMRDevices + i;
@@ -366,7 +364,6 @@ static void UpdateDevices() {
 		}
 	}
 
-	pthread_mutex_unlock(&glMainMutex);
 }
 
 /*----------------------------------------------------------------------------*/
@@ -374,6 +371,8 @@ static bool mDNSsearchCallback(mdnssd_service_t *slist, void *cookie, bool *stop
 	struct sMR *Device;
 	mdnssd_service_t *s;
 	uint32_t now = gettime_ms();
+
+	pthread_mutex_lock(&glMainMutex);
 
 	for (s = slist; s && glMainRunning; s = s->next) {
 		char *am = GetmDNSAttribute(s->attr, s->attr_count, "am");
@@ -417,7 +416,7 @@ static bool mDNSsearchCallback(mdnssd_service_t *slist, void *cookie, bool *stop
 		}
 
 		// device creation so search a free spot.
-		for (Device = glMRDevices; Device->Running && Device < glMRDevices + MAX_RENDERERS; Device++);
+		for (Device = glMRDevices; Device < glMRDevices + MAX_RENDERERS && Device->Running; Device++);
 
 		// no more room !
 		if (Device == glMRDevices + MAX_RENDERERS) {
@@ -432,11 +431,17 @@ static bool mDNSsearchCallback(mdnssd_service_t *slist, void *cookie, bool *stop
 			if (!*(Device->Config.Name)) sprintf(Device->Config.Name, glNameFormat, Device->FriendlyName);
 			Device->SpotPlayer = spotCreatePlayer(glClientId, glClientSecret, Device->Config.Name, id, Device->Credentials, glHost, Device->Config.VorbisRate, 
 												  FRAMES_PER_BLOCK, Device->Config.ReadAhead, (struct shadowPlayer*)Device);
+			if (!Device->SpotPlayer) {
+				LOG_WARN("[%p]: Can't create SpotPlayer", Device);
+				Device->Running = false;
+				raopcl_destroy(Device->Raop);
+			}
 			glUpdated = true;
 		}
 	}
 
 	UpdateDevices();
+	pthread_mutex_unlock(&glMainMutex);
 
 	// save config file if needed (only when creating/changing config items devices)
 	if ((glUpdated && glAutoSaveConfigFile) || glDiscovery) {
@@ -488,7 +493,9 @@ static void *MainThread(void *args) {
 			}
 		}
 
+		pthread_mutex_lock(&glMainMutex);
 		UpdateDevices();
+		pthread_mutex_unlock(&glMainMutex);
 	}
 
 	return NULL;
@@ -640,6 +647,7 @@ static bool AddRaopDevice(struct sMR *Device, mdnssd_service_t *s) {
 
 	if (!Device->Raop) {
 		LOG_ERROR("[%p]: cannot create raop device", Device);
+		Device->Running = false;
 		return false;
 	}
 
@@ -658,12 +666,14 @@ static void FlushRaopDevices(void) {
 static void DelRaopDevice(struct sMR *Device) {
 	// delete the cspot end (no call will come from this side) and context
 	spotDeletePlayer(Device->SpotPlayer);
-	raopcl_destroy(Device->Raop);
 
 	// we are a passive entity, just want to make sure nothing will send more data (artwork)
 	pthread_mutex_lock(&Device->Mutex);
 	Device->Running = false;
 	pthread_mutex_unlock(&Device->Mutex);
+
+	// wait here so that active artwork runners don't bite
+	raopcl_destroy(Device->Raop);
 
 	LOG_INFO("[%p]: Raop device stopped (%s)", Device, Device->FriendlyName);
 }
@@ -671,12 +681,12 @@ static void DelRaopDevice(struct sMR *Device) {
 /*----------------------------------------------------------------------------*/
 static void *ActiveRemoteThread(void *args) {
 	char buf[1024], command[128], ActiveRemote[16];
-	char response[] = "HTTP/1.0 204 No Content\r\nDate: %s,%02d %s %4d %02d:%02d:%02d "
+	char response[] = "HTTP/1.0 204 No Content\r\nDate: %s, %02d %s %4d %02d:%02d:%02d "
 					  "GMT\r\nDAAP-Server: iTunes/7.6.2 (Windows; N;)\r\nContent-Type: "
 					  "application/x-dmap-tagged\r\nContent-Length: 0\r\n"
 					  "Connection: close\r\n\r\n";
-	char *day[] = { "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun" };
-	char *month[] = { "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sept", "Oct", "Nov", "Dec" };
+	char *day[] = { "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat" };
+	char *month[] = { "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" };
 
 	if (listen(glActiveRemoteSock, 1) < 0) {
 		LOG_ERROR("Cannot listen %d", glActiveRemoteSock);

@@ -1,3 +1,7 @@
+0.20.6
+ - fix some timestamp rollover (credits@@007hacky007)
+ - fix misc races & minor/unfrequent errors
+
 0.20.5
  - be less aggressive with bye-bye and do a targeted discovery
  - fix group volume and Spotify initial volume at creation (credits@@007hacky007)
