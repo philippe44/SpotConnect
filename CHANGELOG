@@ -1,3 +1,6 @@
+0.20.7
+ - fix auth (client_info.h is not part of release...)
+ 
 0.20.6
  - fix some timestamp rollover (credits@@007hacky007)
  - fix misc races & minor/unfrequent errors
