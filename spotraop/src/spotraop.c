@@ -1100,7 +1100,7 @@ static bool ParseArgs(int argc, char **argv) {
 			strcpy(glInterface, optarg);
 			break;
 		case 'c':
-			if (!strcasecmp(optarg, "alac")) glMRConfig.AlacEncode = false;
+			if (strcasecmp(optarg, "alac")) glMRConfig.AlacEncode = false;
 			break;
 		case 'r':
 			glMRConfig.VorbisRate = atoi(optarg);
