@@ -384,13 +384,13 @@ HTTPstreamer::replies HTTPstreamer::connect(int sock) {
                                  cache->total, length, cache->total - avail);
                 length = 0;
             }
-        } else if (state == DRAINED) {
+        } else if (state == DRAINED && sendBody) {
             sendBody = false;
             status = "410 Gone";
             response.clear();
             CSPOT_LOG(info, "won't resend from start when already fully served");
         }
-    } else if (state == DRAINED) {
+    } else if (state == DRAINED && sendBody) {
         sendBody = false;
         status = "410 Gone";
         response.clear();
