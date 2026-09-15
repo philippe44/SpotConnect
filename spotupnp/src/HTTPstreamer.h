@@ -128,6 +128,10 @@ private:
 
 public:
     enum states { OFF, CONNECTING, STREAMING, DRAINING, DRAINED };
+    /* what connect() did with what it read: nothing (peer gone, or a request
+     * that is not for this stream), a response with headers only (HEAD or a
+     * refusal) or a response whose body we are expected to send */
+    enum replies { REPLY_NONE, REPLY_BODYLESS, REPLY_BODY };
     std::atomic<states> state = CONNECTING;
     std::string streamId;
     cspot::TrackInfo trackInfo;
@@ -142,7 +146,7 @@ public:
                  onHeadersHandler onHeaders, EoSCallback onEoS);
     ~HTTPstreamer();
     void flush(void);
-    bool connect(int sock);
+    replies connect(int sock);
     bool feedPCMFrames(const uint8_t* data, size_t size);
     std::string getStreamUrl(void) { return streamUrl; }
     void getMetadata(metadata_t* metadata);

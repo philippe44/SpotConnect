@@ -240,7 +240,7 @@ void HTTPstreamer::flush() {
     icy.trackId.clear();
 }
 
-bool HTTPstreamer::connect(int sock) {
+HTTPstreamer::replies HTTPstreamer::connect(int sock) {
     auto data = std::vector<uint8_t>();
 
     // get the HTTP headers by chunks (there should be no body)
@@ -248,7 +248,7 @@ bool HTTPstreamer::connect(int sock) {
         uint8_t buffer[256];
         int n = recv(sock, (char*) buffer, sizeof(buffer), 0);
 
-        if (n <= 0)  return false;
+        if (n <= 0)  return REPLY_NONE;
 
         data.insert(data.end(), buffer, buffer + n);
         if (data.size() >= 4 && !memcmp(data.data() + data.size() - 4, "\r\n\r\n", 4)) break;
@@ -284,13 +284,13 @@ bool HTTPstreamer::connect(int sock) {
 
     if (request.find("?id=") == std::string::npos) {
         CSPOT_LOG(error, "Incorrect HTTP request, can't find streamId %s", request.c_str());
-        return false;
+        return REPLY_NONE;
     }
 
     // check this is what's expected
     if (request.find(streamId) == std::string::npos) {
         CSPOT_LOG(info, "Wrong client/request %s not in  url %s", streamId.c_str(), request.c_str());
-        return false;
+        return REPLY_NONE;
     }
 
     HTTPheaders response, headers;
@@ -428,7 +428,7 @@ bool HTTPstreamer::connect(int sock) {
     send(sock, responseStr.str().c_str(), responseStr.str().size(), 0);
     CSPOT_LOG(info, "HTTP response =>\n%s", responseStr.str().c_str());
 
-    return sendBody;
+    return sendBody ? REPLY_BODY : REPLY_BODYLESS;
 }
 
 ssize_t HTTPstreamer::sendChunk(int sock, uint8_t* data, ssize_t size, bool count) {
@@ -546,7 +546,7 @@ void HTTPstreamer::runTask() {
 
     while (isRunning) {
         fd_set rfds;
-        bool success = true;
+        replies reply = REPLY_BODY;
 
         if (sock == -1) {
             struct timeval timeout = { 0, 50 * 1000 };
@@ -568,14 +568,18 @@ void HTTPstreamer::runTask() {
         int n = select(sock + 1, &rfds, NULL, NULL, &timeout);
 
         if (n > 0) {
-            success = connect(sock);
+            reply = connect(sock);
             // we might already be in draining mode
-            if (success && state <= STREAMING) state = STREAMING;
+            if (reply == REPLY_BODY && state <= STREAMING) state = STREAMING;
             else if (state == DRAINED) useCache = true;
         }
 
-        // terminate connection if required by HTTP peer
-        if (n < 0 || (!success && state <= CONNECTING)) {
+        /* terminate the connection if required by the HTTP peer, or when the
+         * response we've just sent has no body (a HEAD or a refused request):
+         * streaming after that pushes bytes the peer never asked for and is not
+         * reading. A read that failed is not one of those cases, a peer that
+         * half-closes once its request is out still wants what we accepted to send */
+        if (n < 0 || reply == REPLY_BODYLESS || (reply == REPLY_NONE && state <= CONNECTING)) {
             CSPOT_LOG(info, "HTTP close %u (sent:%zu)", sock, totalOut);
             closesocket(sock);
             sock = -1;
