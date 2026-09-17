@@ -1,3 +1,8 @@
+0.20.9
+ - exit with 0 on -t
+ - do not write client_id and client_secret in config file
+ - make config file 0600 when possible
+ 
 0.20.8
  - spotraop: '-c' command line was not handling alac/pcm properly
  

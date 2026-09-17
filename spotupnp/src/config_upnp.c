@@ -59,8 +59,8 @@ void SaveConfig(char *name, void *ref, bool full) {
 	XMLUpdateNode(doc, root, false, "interface", glInterface);
 	XMLUpdateNode(doc, root, false, "credentials_path", glCredentialsPath);
 	XMLUpdateNode(doc, root, false, "credentials", "%d", glCredentials);
-	XMLUpdateNode(doc, root, false, "client_id", glClientId);
-	XMLUpdateNode(doc, root, false, "client_secret", glClientSecret);
+	//XMLUpdateNode(doc, root, false, "client_id", glClientId);
+	//XMLUpdateNode(doc, root, false, "client_secret", glClientSecret);
 	XMLUpdateNode(doc, root, false, "ports", "%hu:%hu", glPortBase, glPortRange);
 
 	XMLUpdateNode(doc, common, false, "enabled", "%d", (int) glMRConfig.Enabled);

@@ -243,6 +243,9 @@ void shadowRequest(struct shadowPlayer* shadow, enum spotEvent event, ...) {
 			FILE* file = fopen(name, "w");
 			free(name);
 			if (file) {
+#if !WIN
+				fchmod(fileno(file), S_IRUSR | S_IWUSR);   /* 0600 */
+#endif
 				fputs(Credentials, file);
 				fclose(file);
 			}
@@ -1067,7 +1070,7 @@ static void sighandler(int signum) {
 }
 
 /*---------------------------------------------------------------------------*/
-static bool ParseArgs(int argc, char **argv) {
+static int ParseArgs(int argc, char **argv) {
 	char *optarg = NULL;
 	int i, optind = 1;
 	char cmdline[256] = "";
@@ -1090,7 +1093,7 @@ static bool ParseArgs(int argc, char **argv) {
 		}
 		else {
 			printf("%s", usage);
-			return false;
+			return -1;
 		}
 		switch (opt[0]) {
 		case 'a':
@@ -1182,18 +1185,18 @@ static bool ParseArgs(int argc, char **argv) {
 					if (!strcmp(l, "all") || !strcmp(l, "raop"))  raop_loglevel = new;
 				} else {
 					printf("%s", usage);
-					return false;
+					return -1;
 				}
 			}
 			break;
 		case 't':
 			printf("%s", license);
-			return false;
+			return 1;
 		default:
 			break;
 		}
 	}
-	return true;
+	return 0;
 }
 
 /*----------------------------------------------------------------------------*/
@@ -1234,7 +1237,9 @@ int main(int argc, char *argv[]) {
 	glConfigID = (void*) LoadConfig(glConfigName, &glMRConfig);
 
 	// potentially overwrite with some cmdline parameters
-	if (!ParseArgs(argc, argv)) exit(1);
+	int parsed = ParseArgs(argc, argv);
+	if (parsed < 0) exit(1);
+	else if (parsed > 0) exit(0);
 
 	// make sure port range is correct
 	if (glPortBase && !glPortRange) glPortRange = MAX_RENDERERS*4;
