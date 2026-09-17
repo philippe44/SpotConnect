@@ -10,7 +10,7 @@ For AirPlay, the audio can be re-encoded using ALAC or left as raw PCM. Note tha
 **Please read carefully the [credentials](#credentials) paragraph to understand how to handle Spotify credentials**
 
 **Update 24/12/2025**
-Spotify has closed some of the WebAPI access, you now need a dedicated application (client) ID and Secret. These are built-in in the binary but not accessible in the source code for obvious reasons. Now, you can use yours either on the command line (-D -S) or in the config file (`<client_id`> and `<client_secret`>. See Spotify's developers platform if you want to use yours. If you rebuild the application yourself and want yours built-in as well, you need to put them in the `client_info.h` file.
+Spotify has closed some of the WebAPI access, you now need a dedicated application (client) ID and Secret. These are built-in in the binary but not accessible in the source code for obvious reasons. Now, you can use yours either on the command line (-D -S) or in the config file (`<client_id`> and `<client_secret`>. See Spotify's developers platform if you want to use yours. If you rebuild the application yourself and want yours built-in as well, you need to put them in the `client_info.h` file. Please note that after version 0.20.8, `<client_id`> and `<client_secret` tags are not written in the config file, so you will not have them in a reference file you might build.
 
 It is likely that the authentication by Username and Password does not work anymore as it needs a redirect page (AFAIU). So for now, stick to ZeroConf.
 
@@ -21,7 +21,7 @@ It is likely that the authentication by Username and Password does not work anym
    * For AirPlay, the file is `spotraop-<os>-<platform>` (so `spotraop-linux-aarch64` for AirPlay on Linux + arm64 CPU)
    * For UPnP/Sonos, the file is `spotupnp-<os>-<platform>` (so `spotupnp-macos-arm64` for UPnP/Sonos on macOS + arm CPU)
 
-1. Store the \<executable\> (e.g. `spotupnp-linux-aarch64multi`) in any directory. 
+1. Store the \<executable\> (e.g. `spotupnp-linux-aarch64`) in any directory. 
 
 1. OS-specific steps:
 	
