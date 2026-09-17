@@ -21,7 +21,7 @@ It is likely that the authentication by Username and Password does not work anym
    * For AirPlay, the file is `spotraop-<os>-<platform>` (so `spotraop-linux-aarch64` for AirPlay on Linux + arm64 CPU)
    * For UPnP/Sonos, the file is `spotupnp-<os>-<platform>` (so `spotupnp-macos-arm64` for UPnP/Sonos on macOS + arm CPU)
 
-1. Store the \<executable\> (e.g. `spotupnp-linux-aarch64multi`) in any directory. 
+1. Store the \<executable\> (e.g. `spotupnp-linux-aarch64`) in any directory. 
 
 1. OS-specific steps:
 	
