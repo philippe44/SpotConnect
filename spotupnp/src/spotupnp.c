@@ -79,6 +79,7 @@ tMRConfig			glMRConfig = {
 							true,				 // SendMetaData
 							false,				 // SendCoverArt
 							"",					 // artwork
+							false,				 // RetryOnStop
 					};
 
 /*----------------------------------------------------------------------------*/
@@ -284,17 +285,19 @@ void SetTrackURI(struct sMR* Device, bool Next, const char * StreamUrl, metadata
 		url = strdup(StreamUrl);
 	}
 
-	/* keep whatever we push so an unexpected stop can fall back to it rather than
-	 * hand the player back to Spotify. Copy first: StreamUrl may alias the field we
-	 * are about to free. Remembering the *next* URL matters for a gapless renderer,
+	/* When opted in, keep what we push so an unexpected stop can fall back to it
+	 * rather than hand the player back to Spotify. Copy first: StreamUrl may alias
+	 * the field we are about to free. Remembering the *next* URL matters for a gapless renderer,
 	 * where SPOT_LOAD hands the track to AVTSetNextURI and clears NextStreamUrl, so
 	 * without this the recovery below has nothing to try */
-	char* keep = strdup(StreamUrl);
+	char* keep = Device->Config.RetryOnStop ? strdup(StreamUrl) : NULL;
 
 	if (Next) {
 		AVTSetNextURI(Device, url, MetaData, Device->ProtocolInfo);
-		NFREE(Device->NextStreamUrl);
-		Device->NextStreamUrl = keep;
+		if (Device->Config.RetryOnStop) {
+			NFREE(Device->NextStreamUrl);
+			Device->NextStreamUrl = keep;
+		}
 	} else {
 		AVTSetURI(Device, url, MetaData, Device->ProtocolInfo);
 		NFREE(Device->StreamUrl);
@@ -627,14 +630,17 @@ int ActionHandler(Upnp_EventType EventType, const void *Event, void *Cookie) {
 						LOG_INFO("[%p]: uPNP stop unexpected", p);
 						/* AVTransport reports the same STOPPED for a renderer that gave up on a
 						 * URL we pushed and for one stopped from its own front panel, so while
-						 * Spotify still believes it is playing, push a URL at it again before
-						 * handing the player back: the one we armed as next if there is one,
-						 * otherwise the current one if it never started playing. That is one
+						 * Spotify still believes it is playing and retry_on_stop is enabled,
+						 * push a URL at it again before handing the player back: the armed next
+						 * URL if there is one, otherwise the current one if it never started
+						 * playing. That is one
 						 * retry per load rather than per URL - a new SPOT_LOAD arms fresh work -
 						 * and a second failure with nothing left to try reports as usual. A
 						 * front-panel stop with a next URL armed rolls onto it instead of
-						 * stopping; our own stops set ExpectStop and never get here. */
-						if (p->SpotState == SPOT_PLAY && p->NextStreamUrl) {
+						 * stopping; our own stops set ExpectStop and never get here. Gapped
+						 * playback already advances on STOPPED without this workaround. */
+						if (p->SpotState == SPOT_PLAY && p->NextStreamUrl &&
+							(!p->Gapless || p->Config.RetryOnStop)) {
 							/* the renderer stopped instead of rolling onto the URL we armed with
 							 * SetNextURI. It is the only thing it should have played next, so
 							 * push it as the current one and start it. Seen on a Frontier Silicon
@@ -647,12 +653,13 @@ int ActionHandler(Upnp_EventType EventType, const void *Event, void *Cookie) {
 								// that was its one retry (SetTrackURI has just cleared the flag)
 								p->PushRetried = true;
 								AVTPlay(p);
-								repushed = true;
+								repushed = p->Config.RetryOnStop;
 							} else {
 								spotNotify(p->SpotPlayer, SHADOW_STOP);
 							}
 							NFREE(p->NextStreamUrl);
-						} else if ((p->State == TRANSITIONING || p->State == UNKNOWN) && p->SpotState == SPOT_PLAY &&
+						} else if (p->Config.RetryOnStop &&
+							(p->State == TRANSITIONING || p->State == UNKNOWN) && p->SpotState == SPOT_PLAY &&
 							p->StreamUrl && !p->PushRetried) {
 							/* nothing armed as next and the renderer gave up before it ever
 							 * reached PLAYING for the URL we just pushed (that radio does this on
@@ -747,7 +754,7 @@ int ActionHandler(Upnp_EventType EventType, const void *Event, void *Cookie) {
 						 * candidate for the unexpected-stop recovery above: a URL it has rolled
 						 * onto by itself is the current one, not something still to be played,
 						 * and pushing a URL we know it has played would only restart it */
-						if (p->NextStreamUrl && SameStreamUrl(r, p->NextStreamUrl)) {
+						if (p->Config.RetryOnStop && p->NextStreamUrl && SameStreamUrl(r, p->NextStreamUrl)) {
 							NFREE(p->StreamUrl);
 							p->StreamUrl = p->NextStreamUrl;
 							p->NextStreamUrl = NULL;

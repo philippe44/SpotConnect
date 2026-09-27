@@ -64,6 +64,7 @@ typedef struct sMRConfig
 	bool		SendMetaData;
 	bool		SendCoverArt;
 	char		ArtWork[4*STR_LEN];
+	bool		RetryOnStop;
 } tMRConfig;
 
 struct sMR {
