@@ -131,7 +131,7 @@ public:
     /* what connect() did with what it read: nothing (peer gone, or a request
      * that is not for this stream), a response with headers only (HEAD or a
      * refusal) or a response whose body we are expected to send */
-    enum replies { REPLY_NONE, REPLY_BODYLESS, REPLY_BODY };
+    enum replies { NONE, HEADERS, FULL };
     std::atomic<states> state = CONNECTING;
     std::string streamId;
     cspot::TrackInfo trackInfo;
