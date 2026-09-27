@@ -570,7 +570,7 @@ void HTTPstreamer::runTask() {
         if (n > 0) {
             reply = connect(sock);
             // we might already be in draining mode
-            if (reply == REPLY_BODY && state <= STREAMING) state = STREAMING;
+            if (reply == FULL && state <= STREAMING) state = STREAMING;
             else if (state == DRAINED) useCache = true;
         }
 
