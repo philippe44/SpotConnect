@@ -666,7 +666,8 @@ void spotOpen(uint16_t portBase, uint16_t portRange, char *username, char* passw
 }
 
 void spotClose(void) {
-    delete bell::bellGlobalLogger;
+    delete static_cast<bell::BellLogger*>(bell::bellGlobalLogger);
+    bell::bellGlobalLogger = nullptr;
 }
 
 struct spotPlayer* spotCreatePlayer(char *client_id, char* client_secret, char* name, char *id, char * credentials, struct in_addr addr, int oggRate, 
@@ -693,9 +694,9 @@ bool spotGetMetaForUrl(struct spotPlayer* spotPlayer, const char *url, metadata_
     return getMetaForUrl((CSpotPlayer*)spotPlayer, url, metadata);
  }
 
-void spotNotify(struct spotPlayer* spotPlayer, enum shadowEvent event, ...) {
+void spotNotify(struct spotPlayer* spotPlayer, int event, ...) {
     va_list args;
     va_start(args, event);
-    notify((CSpotPlayer*)spotPlayer, event, args);
+    notify((CSpotPlayer*)spotPlayer, (enum shadowEvent) event, args);
     va_end(args);
 }

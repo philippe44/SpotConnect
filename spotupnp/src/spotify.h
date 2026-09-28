@@ -41,7 +41,7 @@ void spotDeletePlayer(struct spotPlayer *spotPlayer);
 bool spotGetMetaForUrl(struct spotPlayer* spotPlayer, const char* url, metadata_t* metadata);
 void spotOpen(uint16_t portBase, uint16_t portRange, char* username, char *password);
 void spotClose(void);
-void spotNotify(struct spotPlayer* spotPlayer, enum shadowEvent event, ...);
+void spotNotify(struct spotPlayer* spotPlayer, int event, ...);
 
 #ifdef __cplusplus
 }

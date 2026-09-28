@@ -1,3 +1,8 @@
+0.20.10
+ - respond to HEAD with 200 when all body has been sent. Only respond 401 to a GET (credits@@007hacky007)
+ - fix some race condtion upon disconnect where pending subs were executed with a null shanConn
+ - more cspot race remains while handling callback maps in Mercury: handlePacket/(un)register/faillAllPending...
+ 
 0.20.9
  - exit with 0 on -t
  - do not write client_id and client_secret in config file
