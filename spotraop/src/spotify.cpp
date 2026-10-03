@@ -143,6 +143,9 @@ size_t CSpotPlayer::writePCM(uint8_t* pcm, size_t bytes, std::string_view trackU
     // make sure we don't have a dead lock with a disconnect()
     if (!isRunning || isPaused || flushed) return 0;
 
+    /* As the audio buffer is very short (the raop delay) we don't need to bother about streaming 
+     * vs playing track as it could be when writePCM has a large buffer to write into and so could
+     * be in advance in an uncontrolled way */
     if (streamTrackUnique != trackUnique) {
         CSPOT_LOG(info, "trackUniqueId update %s => %s", streamTrackUnique.c_str(), trackUnique.data());
         streamTrackUnique = trackUnique;
@@ -500,7 +503,8 @@ void CSpotPlayer::runTask() {
                 
                 // new track has reached DAC, this is "delay" after change of identifier
                 if (startTime && now >= startTime) {
-                    // do we have to notify cspot
+                    /* we have to notify cspot and we use the streamTrackUnique although in theory 
+                     * we could have multiple tracks inside the raop latency... oh well */
                     if (notify) spirc->notifyAudioReachedPlayback(streamTrackUnique);
                     else notify = true;
 
@@ -562,7 +566,8 @@ void spotOpen(uint16_t portBase, uint16_t portRange, char *username, char *passw
 }
 
 void spotClose(void) {
-    delete bell::bellGlobalLogger;
+    delete static_cast<bell::BellLogger*>(bell::bellGlobalLogger);
+    bell::bellGlobalLogger = nullptr;
 }
 
 struct spotPlayer* spotCreatePlayer(char* clientId, char* clientSecret, char* name, char *id, char *credentials, struct in_addr addr, int oggRate, size_t frameSize, uint32_t delay, struct shadowPlayer* shadow) {
@@ -583,10 +588,10 @@ void spotDeletePlayer(struct spotPlayer* spotPlayer) {
     delete player;
 }
 
-void spotNotify(struct spotPlayer* spotPlayer, enum shadowEvent event, ...) {
+void spotNotify(struct spotPlayer* spotPlayer,  int event, ...) {
     va_list args;
     va_start(args, event);
-    notify((CSpotPlayer*)spotPlayer, event, args);
+    notify((CSpotPlayer*)spotPlayer, (enum shadowEvent) event, args);
     va_end(args);
 }
 

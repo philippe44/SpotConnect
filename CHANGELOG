@@ -1,3 +1,7 @@
+0.20.11
+ - cspot core fix on readBlock upon EINTR
+ - spotraop: notifyAudio according to new I/F
+
 0.20.10
  - respond to HEAD with 200 when all body has been sent. Only respond 401 to a GET (credits@@007hacky007)
  - fix some race condtion upon disconnect where pending subs were executed with a null shanConn

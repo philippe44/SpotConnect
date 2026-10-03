@@ -32,7 +32,7 @@ struct spotPlayer* spotCreatePlayer(char* clientId, char*clientSecret, char* nam
 void spotDeletePlayer(struct spotPlayer *spotPlayer);
 void spotOpen(uint16_t portBase, uint16_t portRange, char* username, char* password);
 void spotClose(void);
-void spotNotify(struct spotPlayer* spotPlayer, enum shadowEvent event, ...);
+void spotNotify(struct spotPlayer* spotPlayer, int event, ...);
 
 #ifdef __cplusplus
 }
