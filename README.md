@@ -88,9 +88,25 @@ The default configuration file is `config.xml`, stored in the same directory as 
 - `artwork`	: an URL to a fixed artwork to be displayed on player in flow mode
 - `flow`        : enable flow mode
 - `gapless`     : use UPnP gapless mode (if players supports it)
+- `retry_on_stop <0|1>`: opt-in workaround for renderers that stop instead of starting a pushed track (default `0`). See the limitations below before enabling it.
 - `http_content_length`	   : same as `-g` command line parameter
 - `codec mp3[:<bitrate>]|aac[:<bitrate>]|vorbis[:<bitrate>]|opus[:<bitrate>]|flc[:0..9]|wav|pcm`: format used to send HTTP audio. FLAC is recommended but uses more CPU (pcm only available for UPnP). For example, `mp3:320` for 320Kb/s MP3 encoding.
 - `use_filecache`: cache the whole track on disk (see [this](#HTTP-content-length-and-transfer-modes) section)
+
+For an affected renderer, add `<retry_on_stop>1</retry_on_stop>` to its existing
+`<device>` section. This retries the pending gapless track after an unexpected
+STOPPED, or retries the current track once if it stopped during startup before
+its playback was observed. It has recovered failed track transitions on a
+Frontier Silicon Hama radio, including very short tracks.
+
+This is not a general fix for UPnP playback. An intentional Stop on the renderer
+or from another controller is indistinguishable from this failure: **with a
+pending next track, Stop will skip to that track instead of stopping**. A failed
+startup that remains STOPPED without an observed transition is not retried, and
+polling can miss playback of a very short track. Bridge-requested stops and
+Spotify pause/stop do not trigger the workaround. It does not fix unreliable
+pause/resume. Leave it disabled unless the recovery is worth this trade-off;
+the existing non-gapless next-track handling is unchanged.
 
 #### AirPlay
 - `alac_encode <0|1>`: format used to send audio (`0` = PCM, `1` = ALAC)

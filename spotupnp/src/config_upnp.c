@@ -72,6 +72,7 @@ void SaveConfig(char *name, void *ref, bool full) {
 	XMLUpdateNode(doc, common, false, "flow", "%d", glMRConfig.Flow);
 	XMLUpdateNode(doc, common, false, "use_filecache", "%d", glMRConfig.CacheMode);
 	XMLUpdateNode(doc, common, false, "gapless", "%d", glMRConfig.Gapless);
+	XMLUpdateNode(doc, common, false, "retry_on_stop", "%d", glMRConfig.RetryOnStop);
 	XMLUpdateNode(doc, common, false, "artwork", "%s", glMRConfig.ArtWork);
 
 	// mutex is locked here so no risk of a player being destroyed in our back
@@ -137,6 +138,7 @@ static void LoadConfigItem(tMRConfig *Conf, char *name, char *val) {
 	if (!strcmp(name, "flow")) Conf->Flow = atoi(val);
 	if (!strcmp(name, "use_filecache")) Conf->CacheMode = atoi(val);
 	if (!strcmp(name, "gapless")) Conf->Gapless = atoi(val);
+	if (!strcmp(name, "retry_on_stop")) Conf->RetryOnStop = atoi(val) != 0;
 	if (!strcmp(name, "artwork")) strcpy(Conf->ArtWork, val);
 	if (!strcmp(name, "credentials")) strcpy(Conf->Credentials, val);
 	if (!strcmp(name, "name")) strcpy(Conf->Name, val);

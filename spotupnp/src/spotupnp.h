@@ -64,6 +64,7 @@ typedef struct sMRConfig
 	bool		SendMetaData;
 	bool		SendCoverArt;
 	char		ArtWork[4*STR_LEN];
+	bool		RetryOnStop;
 } tMRConfig;
 
 struct sMR {
@@ -96,7 +97,9 @@ struct sMR {
 	char 			ProtocolInfo[STR_LEN];
 	bool			Gapless;
 	char			TrackURI[STR_LEN];
-	char*			NextStreamUrl;
+	char*			NextStreamUrl;	// URL armed as next (gapped stash, or what we gave SetNextURI)
+	char*			StreamUrl;		// URL the renderer is on: pushed, or adopted from the armed next
+	bool			PushRetried;	// the current load has used up its one re-push
 };
 
 extern UpnpClient_Handle   	glControlPointHandle;

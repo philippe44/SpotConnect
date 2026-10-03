@@ -79,6 +79,7 @@ tMRConfig			glMRConfig = {
 							true,				 // SendMetaData
 							false,				 // SendCoverArt
 							"",					 // artwork
+							false,				 // RetryOnStop
 					};
 
 /*----------------------------------------------------------------------------*/
@@ -284,8 +285,25 @@ void SetTrackURI(struct sMR* Device, bool Next, const char * StreamUrl, metadata
 		url = strdup(StreamUrl);
 	}
 
-	if (Next) AVTSetNextURI(Device, url, MetaData, Device->ProtocolInfo);
-	else AVTSetURI(Device, url, MetaData, Device->ProtocolInfo);
+	/* When opted in, keep what we push so an unexpected stop can fall back to it
+	 * rather than hand the player back to Spotify. Copy first: StreamUrl may alias
+	 * the field we are about to free. Remembering the *next* URL matters for a gapless renderer,
+	 * where SPOT_LOAD hands the track to AVTSetNextURI and clears NextStreamUrl, so
+	 * without this the recovery below has nothing to try */
+	char* keep = Device->Config.RetryOnStop ? strdup(StreamUrl) : NULL;
+
+	if (Next) {
+		AVTSetNextURI(Device, url, MetaData, Device->ProtocolInfo);
+		if (Device->Config.RetryOnStop) {
+			NFREE(Device->NextStreamUrl);
+			Device->NextStreamUrl = keep;
+		}
+	} else {
+		AVTSetURI(Device, url, MetaData, Device->ProtocolInfo);
+		NFREE(Device->StreamUrl);
+		Device->StreamUrl = keep;
+		Device->PushRetried = false;
+	}
 
 	free(url);
 }
@@ -537,6 +555,17 @@ uint64_t ConvertTime(char* time) {
 }
 
 /*----------------------------------------------------------------------------*/
+/* Is the URL a renderer reports one we pushed at it? It can come back with
+ * something in front (a Sonos live stream is reported with the
+ * x-rincon-mp3radio:// prefix we added when pushing it) but not with anything
+ * appended, so the match has to reach the end: stream ids are a counter and a
+ * plain strstr() also finds ...id=x_2 inside the ...id=x_20 pushed later */
+static bool SameStreamUrl(const char* Reported, const char* Pushed) {
+	const char* Found = strstr(Reported, Pushed);
+	return Found && !Found[strlen(Pushed)];
+}
+
+/*----------------------------------------------------------------------------*/
 int ActionHandler(Upnp_EventType EventType, const void *Event, void *Cookie) {
 	static int recurse = 0;
 	struct sMR *p = NULL;
@@ -593,31 +622,75 @@ int ActionHandler(Upnp_EventType EventType, const void *Event, void *Cookie) {
 					p->State = TRANSITIONING;
 					LOG_INFO("[%p]: uPNP transition", p);
 				} else if (!strcmp(r, "STOPPED") && p->State != STOPPED) {
+					bool repushed = false;
+
 					if (p->ExpectStop) {
 						LOG_INFO("[%p]: uPNP stop expected", p);
 					} else {
 						LOG_INFO("[%p]: uPNP stop unexpected", p);
-						// unexpected stop, move to next url if any, report otherwise
-						if (p->SpotState == SPOT_PLAY && p->NextStreamUrl) {
+						/* AVTransport reports the same STOPPED for a renderer that gave up on a
+						 * URL we pushed and for one stopped from its own front panel, so while
+						 * Spotify still believes it is playing and retry_on_stop is enabled,
+						 * push a URL at it again before handing the player back: the armed next
+						 * URL if there is one, otherwise the current one if it never started
+						 * playing. That is one
+						 * retry per load rather than per URL - a new SPOT_LOAD arms fresh work -
+						 * and a second failure with nothing left to try reports as usual. A
+						 * front-panel stop with a next URL armed rolls onto it instead of
+						 * stopping; our own stops set ExpectStop and never get here. Gapped
+						 * playback already advances on STOPPED without this workaround. */
+						if (p->SpotState == SPOT_PLAY && p->NextStreamUrl &&
+							(!p->Gapless || p->Config.RetryOnStop)) {
+							/* the renderer stopped instead of rolling onto the URL we armed with
+							 * SetNextURI. It is the only thing it should have played next, so
+							 * push it as the current one and start it. Seen on a Frontier Silicon
+							 * radio at a track boundary, most often on very short tracks where
+							 * the whole transition happens inside a few tens of milliseconds */
 							metadata_t MetaData = { 0 };
 							if (spotGetMetaForUrl(p->SpotPlayer, p->NextStreamUrl, &MetaData)) {
+								LOG_INFO("[%p]: renderer stopped at track boundary, pushing %s", p, p->NextStreamUrl);
 								SetTrackURI(p, false, p->NextStreamUrl, &MetaData);
+								// that was its one retry (SetTrackURI has just cleared the flag)
+								p->PushRetried = true;
 								AVTPlay(p);
+								repushed = p->Config.RetryOnStop;
 							} else {
 								spotNotify(p->SpotPlayer, SHADOW_STOP);
 							}
 							NFREE(p->NextStreamUrl);
+						} else if (p->Config.RetryOnStop &&
+							(p->State == TRANSITIONING || p->State == UNKNOWN) && p->SpotState == SPOT_PLAY &&
+							p->StreamUrl && !p->PushRetried) {
+							/* nothing armed as next and the renderer gave up before it ever
+							 * reached PLAYING for the URL we just pushed (that radio does this on
+							 * its first push after standby: one HEAD, then STOPPED) */
+							metadata_t MetaData = { 0 };
+							if (spotGetMetaForUrl(p->SpotPlayer, p->StreamUrl, &MetaData)) {
+								LOG_INFO("[%p]: renderer stopped before playing, pushing %s again", p, p->StreamUrl);
+								SetTrackURI(p, false, p->StreamUrl, &MetaData);
+								AVTPlay(p);
+								p->PushRetried = true;
+								repushed = true;
+							} else {
+								spotNotify(p->SpotPlayer, SHADOW_STOP);
+							}
 						} else if (p->SpotState != SPOT_STOP && p->SpotState != SPOT_PAUSE) {
 							// some players (Sonos again...) report a STOPPED state when pause *only* with mp3
 							spotNotify(p->SpotPlayer, SHADOW_STOP);
 						}
 					}
 
-					// move to STOPPED state anyway as next detection will re-sync us
-					p->State = STOPPED;
+					/* Move to STOPPED anyway as next detection will re-sync us, but not
+					 * when we have just pushed a URL and asked it to play: STOPPED puts
+					 * the poll thread on a 5 s cycle, so it sleeps through the renderer
+					 * starting and then through the TrackURI change, and Spotify keeps
+					 * showing the previous track for ~10 s into the new one */
+					p->State = repushed ? TRANSITIONING : STOPPED;
 					p->ExpectStop = false;
-				} else if (!strcmp(r, "NO_MEDIA_PRESENT") && (p->State == PLAYING || p->State == PAUSED)) {
-					// renderer lost its media while we believed it was playing or paused, we shall stop
+				} else if (!strcmp(r, "NO_MEDIA_PRESENT") && (p->State == PLAYING || p->State == PAUSED ||
+				                                              p->State == TRANSITIONING)) {
+					/* renderer lost its media while we believed it was playing, paused or
+					 * moving to a URL we have just pushed at it, we shall stop */
 					if (p->ExpectStop) {
 						LOG_INFO("[%p]: uPNP no media present (stop expected)", p);
 					} else {
@@ -652,8 +725,11 @@ int ActionHandler(Upnp_EventType EventType, const void *Event, void *Cookie) {
 			if (p->State == PLAYING) {
 				// URI detection response
 				r = XMLGetFirstDocumentItem(Result, "TrackURI", true);
-				if (r) {
-					if (*r == '\0' || !strstr(r, HTTP_BASE_URL)) {
+				/* an empty <TrackURI/> has no text child, so it comes back as NULL rather
+				 * than as an empty string: those renderers name the URL they are on in
+				 * the metadata only, and must still reach the fallback below */
+				if (r || ixmlDocument_getElementById(Result, "TrackMetaData")) {
+					if (!r || *r == '\0' || !strstr(r, HTTP_BASE_URL)) {
 						NFREE(r);
 						char* s = XMLGetFirstDocumentItem(Result, "TrackMetaData", true);
 						IXML_Document* doc = ixmlParseBuffer(s);
@@ -673,6 +749,17 @@ int ActionHandler(Upnp_EventType EventType, const void *Event, void *Cookie) {
 							p->TrackURI[sizeof(p->TrackURI) - 1] = '\0';
 							p->ElapsedAccrued = 0;
 						}
+
+						/* the renderer tells us which URL it is on, which is what makes one a
+						 * candidate for the unexpected-stop recovery above: a URL it has rolled
+						 * onto by itself is the current one, not something still to be played,
+						 * and pushing a URL we know it has played would only restart it */
+						if (p->Config.RetryOnStop && p->NextStreamUrl && SameStreamUrl(r, p->NextStreamUrl)) {
+							NFREE(p->StreamUrl);
+							p->StreamUrl = p->NextStreamUrl;
+							p->NextStreamUrl = NULL;
+						}
+						if (p->StreamUrl && SameStreamUrl(r, p->StreamUrl)) p->PushRetried = true;
 						//spotNotify(p->SpotPlayer, SHADOW_TRACK, r + p->PrefixLength);
 						spotNotify(p->SpotPlayer, SHADOW_TRACK, r);
 						free(r);
@@ -1116,6 +1203,8 @@ static bool AddMRDevice(struct sMR* Device, char* UDN, IXML_Document* DescDoc, c
 
 	Device->SpotState = SPOT_STOP;
 	Device->State = STOPPED;
+	Device->StreamUrl = NULL;
+	Device->PushRetried = false;
 	Device->LastSeen = now / 1000;
 	Device->Leaving = false;
 	Device->VolumeStampRx = Device->VolumeStampTx = now - 2000;
