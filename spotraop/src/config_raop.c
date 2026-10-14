@@ -79,6 +79,7 @@ void SaveConfig(char *name, void *ref, bool full) {
 	XMLUpdateNode(doc, common, false, "alac_encode", "%d", (int) glMRConfig.AlacEncode);
 	XMLUpdateNode(doc, common, false, "encryption", "%d", (int) glMRConfig.Encryption);
 	XMLUpdateNode(doc, common, false, "read_ahead", "%d", (int) glMRConfig.ReadAhead);
+	XMLUpdateNode(doc, common, false, "airplay2", "%d", (int) glMRConfig.AirPlay2);
 
 	for (int i = 0; i < MAX_RENDERERS; i++) {
 		IXML_Node *dev_node;
@@ -154,6 +155,7 @@ static void LoadConfigItem(tMRConfig *Conf, char *name, char *val) {
 	if (!strcmp(name, "volume_feedback")) Conf->VolumeFeedback = atol(val);
 	if (!strcmp(name, "volume_mode")) Conf->VolumeMode = atol(val);
 	if (!strcmp(name, "alac_encode")) Conf->AlacEncode = atol(val);
+	if (!strcmp(name, "airplay2")) Conf->AirPlay2 = atol(val);
 	if (!strcmp(name, "name")) strcpy(Conf->Name, val);
 }
 

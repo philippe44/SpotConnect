@@ -95,6 +95,7 @@ The default configuration file is `config.xml`, stored in the same directory as 
 #### AirPlay
 - `alac_encode <0|1>`: format used to send audio (`0` = PCM, `1` = ALAC)
 - `encryption <0|1>`: most software-based player and cheap knock-off require encryption to be activated otherwise they won't stream.
+- `airplay2 <-1|0|1>`: use AirPlay 2 (HomeKit transient pairing) instead of AirPlay 1. HomePods and Apple TV running OS 27 or later stay silent with AirPlay 1. `-1` (default) selects AirPlay 2 automatically for HomePods and for Apple TV with tvOS 27+, `0` never uses it and `1` forces it. The speaker's "Allow Speaker & TV Access" must be set to "Everyone" (no password or PIN).
 
 #### Apple TV
 - `raop_credentials`   : Apple TV pairing credential obtained from running in `-l` pairing mode
