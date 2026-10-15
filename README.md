@@ -39,6 +39,7 @@ It is likely that the authentication by Username and Password does not work anym
 
 1. Don't use firewall or set ports using options below and open them. 
 	- Each device uses 1 port for HTTP (use `-a` parameter, default is random)
+	- Each AirPlay device also uses 3 UDP ports from the same range (timing, control, audio) and the speaker sends its timing and retransmit requests back to them. If they are blocked the speaker stays silent, and an AirPlay 2 speaker fails its stream `SETUP` after 10 s (the log says so). On macOS, add spotraop to the firewall's allowed applications (System Settings, Network, Firewall, Options), the firewall does not ask by itself. In Docker, use host networking.
 	- UPnP adds one extra port for discovery (use `-b` or \<upnp_socket\> parameter, default is 49152 and user value must be *above* this)
 
 1. In Docker, you must use 'host' mode to enable audio webserver. Note that you can't have a NAT between your devices and the machine where AirConnect runs.
