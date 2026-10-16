@@ -93,6 +93,7 @@ void SaveConfig(char *name, void *ref, bool full) {
 			if (*p->Config.Password) XMLUpdateNode(doc, dev_node, true, "password", p->Config.Password);
 			else XMLDelNode(dev_node, "password");
 			XMLUpdateNode(doc, dev_node, true, "credentials", p->Config.Credentials);
+			if (*p->Config.RaopCredentials) XMLUpdateNode(doc, dev_node, true, "raop_credentials", p->Config.RaopCredentials);
 		} else {
 			dev_node = XMLAddNode(doc, root, "device", NULL);
 			XMLAddNode(doc, dev_node, "udn", p->UDN);
