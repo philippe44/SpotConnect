@@ -88,6 +88,7 @@ tMRConfig			glMRConfig = {
 							2,				 // VolumeMode = HARDWARE
 							VOLUME_FEEDBACK, // VolumeFeedback
 							true,			 // AlacEncode
+							-1,				 // AirPlay2 (auto)
 					};
 
 /*----------------------------------------------------------------------------*/
@@ -638,6 +639,12 @@ static bool AddRaopDevice(struct sMR *Device, mdnssd_service_t *s) {
 								 Channels ? atoi(Channels) : 2,
 								 Device->Volume);
 
+	// AirPlay 2 is auto-detected for HomePods, but AppleTV before tvOS 27 still plays AirPlay 1
+	int AirPlay2 = Device->Config.AirPlay2;
+	char *ov = GetmDNSAttribute(s->attr, s->attr_count, "ov");
+	if (AirPlay2 < 0 && am && strcasestr(am, "appletv") && ov && atoi(ov) < 27) AirPlay2 = 0;
+	NFREE(ov);
+
 	NFREE(password);
 	NFREE(am);
 	NFREE(md);
@@ -653,6 +660,9 @@ static bool AddRaopDevice(struct sMR *Device, mdnssd_service_t *s) {
 		Device->Running = false;
 		return false;
 	}
+
+	// -1 auto (GET /info decides), 0 AirPlay 1, 1 AirPlay 2
+	raopcl_set_airplay2(Device->Raop, AirPlay2);
 
 	return true;
 }

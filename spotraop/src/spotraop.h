@@ -56,6 +56,7 @@ typedef struct sMRConfig
 	int			VolumeMode;
 	int			VolumeFeedback;
 	bool		AlacEncode;
+	int			AirPlay2;		// -1 auto (HomePod/AppleTV), 0 never, 1 always
 } tMRConfig;
 
 
